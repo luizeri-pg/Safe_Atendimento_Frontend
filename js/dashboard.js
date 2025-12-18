@@ -1,6 +1,13 @@
 // URLs da API - carregadas do config.js
 const API_URL = window.API_CONFIG?.SENHAS_URL || "http://localhost:3000/api/senhas";
 
+// Função auxiliar para criar AbortController com timeout (compatível com navegadores antigos)
+function createTimeoutSignal(timeoutMs) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    return { signal: controller.signal, timeoutId };
+}
+
 // Função para obter URL do SOC com data (URL fixa, só muda o parâmetro data)
 function getSOCUrl(data) {
     if (window.API_CONFIG?.getSOC_URL) {
@@ -885,6 +892,8 @@ function getSOCUrl(data) {
                 const hojeISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
                 const socUrl = getSOCUrl(hojeISO);
                 
+                console.log('🔍 Buscando pacientes do SOC:', socUrl);
+                
                 const response = await fetch(socUrl);
                 
                 if (!response.ok) {
@@ -893,20 +902,35 @@ function getSOCUrl(data) {
                 
                 const consultasSOC = await response.json();
                 
+                console.log('✅ Dados recebidos do SOC:', consultasSOC.length, 'registros');
+                
                 // Garantir que é um array
                 if (!Array.isArray(consultasSOC)) {
+                    console.error('❌ Resposta não é um array:', typeof consultasSOC, consultasSOC);
                     throw new Error('Resposta da API SOC não é um array');
                 }
                 
-                // Filtrar apenas pacientes do dia atual
-                // Obter data de hoje no formato DD/MM/YYYY (mesmo formato que vem da API)
+                // Verificar se há dados
+                if (consultasSOC.length === 0) {
+                    patientsGrid.innerHTML = `
+                        <div class="col-span-full text-center py-10 text-gray-500">
+                            <i class="fas fa-users text-5xl mb-4 text-gray-300"></i>
+                            <h3 class="text-lg font-semibold mb-2">Nenhum paciente encontrado</h3>
+                            <p class="text-sm">Não há pacientes agendados no SOC para a data consultada</p>
+                        </div>
+                    `;
+                    if (patientsCount) patientsCount.textContent = '';
+                    return;
+                }
+                
+                // Obter data de hoje no formato DD/MM/YYYY para filtrar
                 const hoje = new Date();
                 const dia = String(hoje.getDate()).padStart(2, '0');
                 const mes = String(hoje.getMonth() + 1).padStart(2, '0');
                 const ano = hoje.getFullYear();
                 const hojeFormatadoBR = `${dia}/${mes}/${ano}`;
                 
-                // Filtrar pacientes que têm DATACOMPROMISSO igual a hoje
+                // Filtrar APENAS pacientes que têm DATACOMPROMISSO igual a hoje
                 const pacientesDoDia = consultasSOC.filter(consulta => {
                     if (!consulta.DATACOMPROMISSO) {
                         return false;
@@ -916,30 +940,31 @@ function getSOCUrl(data) {
                     const dataCompromisso = String(consulta.DATACOMPROMISSO).trim();
                     
                     // Comparar diretamente (ambas no formato DD/MM/YYYY)
-                    if (dataCompromisso === hojeFormatadoBR) {
-                        return true;
-                    }
-                    
-                    // Se a data não corresponde, retornar false
-                    return false;
+                    return dataCompromisso === hojeFormatadoBR;
                 });
                 
-                // Armazenar apenas pacientes do dia para o filtro
+                console.log(`📅 Data de hoje: ${hojeFormatadoBR}`);
+                console.log(`📊 Total de registros recebidos: ${consultasSOC.length}`);
+                console.log(`✅ Pacientes de hoje filtrados: ${pacientesDoDia.length}`);
+                
+                if (pacientesDoDia.length === 0 && consultasSOC.length > 0) {
+                    // Debug: mostrar quais datas foram retornadas
+                    const datasUnicas = [...new Set(consultasSOC.map(c => c.DATACOMPROMISSO).filter(Boolean))];
+                    console.log(`⚠️ Nenhum paciente de hoje. Datas encontradas:`, datasUnicas.slice(0, 5));
+                }
+                
+                // Armazenar apenas pacientes de hoje para o filtro
                 allPatientsData = pacientesDoDia;
                 
-                if (pacientesDoDia.length === 0) {
-                    patientsGrid.innerHTML = `
-                        <div class="col-span-full text-center py-10 text-gray-500">
-                            <i class="fas fa-users text-5xl mb-4 text-gray-300"></i>
-                            <h3 class="text-lg font-semibold mb-2">Nenhum paciente encontrado para hoje</h3>
-                            <p class="text-sm">Não há pacientes agendados para ${hojeFormatadoBR} no SOC</p>
-                        </div>
-                    `;
-                    if (patientsCount) patientsCount.textContent = '';
-                    return;
+                // Garantir que a seção está visível antes de renderizar
+                const patientsSection = document.getElementById('patientsSection');
+                if (patientsSection) {
+                    patientsSection.classList.remove('hidden');
+                    patientsSection.classList.add('active');
+                    patientsSection.style.display = 'block';
                 }
-            
-                // Renderizar pacientes do dia (sem filtro inicial)
+                
+                // Renderizar APENAS pacientes de hoje
                 renderPatients(pacientesDoDia);
                 
             } catch (error) {
@@ -994,7 +1019,13 @@ function getSOCUrl(data) {
             const patientsGrid = document.getElementById('patientsGrid');
             const patientsCount = document.getElementById('patientsCount');
             
-            if (!patientsGrid) return;
+            console.log('🎨 Renderizando pacientes:', patients.length);
+            console.log('📍 Elemento patientsGrid existe?', !!patientsGrid);
+            
+            if (!patientsGrid) {
+                console.error('❌ Elemento patientsGrid não encontrado!');
+                return;
+            }
             
             if (patients.length === 0) {
                 patientsGrid.innerHTML = `
@@ -1016,6 +1047,8 @@ function getSOCUrl(data) {
                     ? `${showing} paciente${showing !== 1 ? 's' : ''} encontrado${showing !== 1 ? 's' : ''}`
                     : `Mostrando ${showing} de ${total} paciente${total !== 1 ? 's' : ''}`;
             }
+            
+            console.log('✅ Renderizando', patients.length, 'pacientes no grid');
             
             // Formatar e exibir pacientes do SOC (mesma estrutura do index.js)
             patientsGrid.innerHTML = patients.map(consulta => {
@@ -1111,20 +1144,23 @@ function getSOCUrl(data) {
         }
         
         // Helper function to format SOC date
-        function formatarDataSOC(dataISO) {
-            if (!dataISO) return 'Não agendado';
+        function formatarDataSOC(dataStr) {
+            if (!dataStr) return 'Não agendado';
             try {
-                const data = new Date(dataISO);
-                if (isNaN(data.getTime())) return dataISO;
+                // Se já está no formato DD/MM/YYYY, retornar como está
+                if (typeof dataStr === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dataStr.trim())) {
+                    return dataStr.trim();
+                }
+                // Tentar converter de ISO ou outros formatos
+                const data = new Date(dataStr);
+                if (isNaN(data.getTime())) return dataStr;
                 return data.toLocaleDateString('pt-BR', {
                     day: '2-digit',
                     month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
+                    year: 'numeric'
                 });
             } catch (e) {
-                return dataISO;
+                return dataStr;
             }
         }
 
@@ -1216,10 +1252,37 @@ function getSOCUrl(data) {
                 if (naFilaEl) naFilaEl.textContent = '...';
                 if (tempoMedioEl) tempoMedioEl.textContent = '...';
                 
-                const response = await fetch(API_URL);
+                // Verificar se API_URL está definida
+                if (!API_URL) {
+                    throw new Error('URL da API não configurada');
+                }
+                
+                // Criar signal com timeout
+                const { signal, timeoutId } = createTimeoutSignal(10000); // 10 segundos
+                
+                const response = await fetch(API_URL, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    signal: signal
+                }).catch(fetchError => {
+                    clearTimeout(timeoutId);
+                    // Capturar erros de rede
+                    if (fetchError.name === 'AbortError') {
+                        throw new Error('Timeout: A requisição demorou muito para responder');
+                    } else if (fetchError.message && fetchError.message.includes('Load failed')) {
+                        throw new Error('Erro de conexão: Não foi possível conectar ao servidor');
+                    } else if (fetchError.message && fetchError.message.includes('Failed to fetch')) {
+                        throw new Error('Erro de conexão: Não foi possível conectar ao servidor');
+                    }
+                    throw fetchError;
+                });
+                
+                clearTimeout(timeoutId);
                 
                 if (!response.ok) {
-                    throw new Error(`Erro HTTP: ${response.status}`);
+                    throw new Error(`Erro HTTP: ${response.status} ${response.statusText}`);
                 }
                 
                 const senhas = await response.json();
@@ -1258,12 +1321,23 @@ function getSOCUrl(data) {
                 
                 if (tempoMedioEl) tempoMedioEl.textContent = tempoMedio > 0 ? `${tempoMedio}min` : '0min';
                 
+                // Limpar flag de erro se carregou com sucesso
+                window.dashboardErrorShown = false;
+                
             } catch (error) {
                 console.error('Erro ao carregar dados do dashboard:', error);
                 
-                // Verificar se é erro 404/CORS (API indisponível)
-                const is404 = error.message && (error.message.includes('404') || error.message.includes('Load failed') || 
-                             error.message.includes('CORS') || error.message.includes('Access-Control'));
+                // Detectar tipo de erro
+                const isConnectionError = error.message && (
+                    error.message.includes('Load failed') || 
+                    error.message.includes('Failed to fetch') ||
+                    error.message.includes('Não foi possível conectar') ||
+                    error.message.includes('Erro de conexão') ||
+                    error.message.includes('Timeout') ||
+                    error.name === 'TypeError' && error.message.includes('Load failed')
+                );
+                
+                const is404 = error.message && error.message.includes('404');
                 
                 // Mostrar valores padrão em caso de erro
                 const pacientesHojeEl = document.getElementById('pacientesHoje');
@@ -1271,17 +1345,26 @@ function getSOCUrl(data) {
                 const naFilaEl = document.getElementById('naFila');
                 const tempoMedioEl = document.getElementById('tempoMedio');
                 
-                if (pacientesHojeEl) pacientesHojeEl.textContent = is404 ? '?' : '0';
-                if (consultasRealizadasEl) consultasRealizadasEl.textContent = is404 ? '?' : '0';
-                if (naFilaEl) naFilaEl.textContent = is404 ? '?' : '0';
-                if (tempoMedioEl) tempoMedioEl.textContent = is404 ? '--' : '0min';
+                if (pacientesHojeEl) pacientesHojeEl.textContent = (isConnectionError || is404) ? '?' : '0';
+                if (consultasRealizadasEl) consultasRealizadasEl.textContent = (isConnectionError || is404) ? '?' : '0';
+                if (naFilaEl) naFilaEl.textContent = (isConnectionError || is404) ? '?' : '0';
+                if (tempoMedioEl) tempoMedioEl.textContent = (isConnectionError || is404) ? '--' : '0min';
                 
-                // Log erro apenas na primeira vez
-                if (!window.dashboardErrorShown) {
+                // Log erro apenas na primeira vez ou se for erro de conexão
+                if (!window.dashboardErrorShown || isConnectionError) {
                     window.dashboardErrorShown = true;
-                    const message = is404 
-                        ? 'Backend indisponível. Verifique se o servidor Railway está rodando.'
-                        : 'Não foi possível carregar os dados do dashboard. Verifique sua conexão.';
+                    let message = 'Não foi possível carregar os dados do dashboard.';
+                    
+                    if (isConnectionError) {
+                        const isLocalhost = window.location.hostname === 'localhost' || 
+                                          window.location.hostname === '127.0.0.1';
+                        message = isLocalhost 
+                            ? 'Backend não está rodando. Inicie o servidor local na porta 3000.'
+                            : 'Backend indisponível. Verifique se o servidor Railway está rodando.';
+                    } else if (is404) {
+                        message = 'Endpoint não encontrado. Verifique a configuração da API.';
+                    }
+                    
                     console.warn('API Indisponível:', message);
                 }
             }
@@ -1329,10 +1412,37 @@ function getSOCUrl(data) {
                     </div>
                 `;
                 
-                const response = await fetch(API_URL);
+                // Verificar se API_URL está definida
+                if (!API_URL) {
+                    throw new Error('URL da API não configurada');
+                }
+                
+                // Criar signal com timeout
+                const { signal, timeoutId } = createTimeoutSignal(10000); // 10 segundos
+                
+                const response = await fetch(API_URL, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    signal: signal
+                }).catch(fetchError => {
+                    clearTimeout(timeoutId);
+                    // Capturar erros de rede
+                    if (fetchError.name === 'AbortError') {
+                        throw new Error('Timeout: A requisição demorou muito para responder');
+                    } else if (fetchError.message && fetchError.message.includes('Load failed')) {
+                        throw new Error('Erro de conexão: Não foi possível conectar ao servidor');
+                    } else if (fetchError.message && fetchError.message.includes('Failed to fetch')) {
+                        throw new Error('Erro de conexão: Não foi possível conectar ao servidor');
+                    }
+                    throw fetchError;
+                });
+                
+                clearTimeout(timeoutId);
                 
                 if (!response.ok) {
-                    throw new Error(`Erro HTTP: ${response.status}`);
+                    throw new Error(`Erro HTTP: ${response.status} ${response.statusText}`);
                 }
                 
                 const senhas = await response.json();
@@ -1395,14 +1505,39 @@ function getSOCUrl(data) {
                 console.error('Erro ao carregar atividade recente:', error);
                 const activityList = document.getElementById('activityList');
                 if (activityList) {
-                    const is404 = error.message.includes('404') || error.message.includes('Load failed') || 
-                                 error.message.includes('CORS') || error.message.includes('Access-Control');
+                    // Detectar tipo de erro
+                    const isConnectionError = error.message && (
+                        error.message.includes('Load failed') || 
+                        error.message.includes('Failed to fetch') ||
+                        error.message.includes('Não foi possível conectar') ||
+                        error.message.includes('Erro de conexão') ||
+                        error.message.includes('Timeout') ||
+                        error.name === 'TypeError' && error.message.includes('Load failed')
+                    );
+                    
+                    const is404 = error.message && (
+                        error.message.includes('404') || 
+                        error.message.includes('CORS') || 
+                        error.message.includes('Access-Control')
+                    );
+                    
+                    const isLocalhost = window.location.hostname === 'localhost' || 
+                                      window.location.hostname === '127.0.0.1';
+                    
+                    let errorMessage = 'Erro ao carregar atividades';
+                    if (isConnectionError) {
+                        errorMessage = isLocalhost 
+                            ? 'Backend não está rodando. Inicie o servidor local na porta 3000.'
+                            : 'Backend indisponível. Verifique se o servidor Railway está rodando.';
+                    } else if (is404) {
+                        errorMessage = 'API indisponível';
+                    }
                     
                     activityList.innerHTML = `
                         <div class="text-center py-8">
                             <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                                 <i class="fas fa-exclamation-triangle text-2xl mb-2 text-yellow-600"></i>
-                                <p class="text-sm text-gray-600">${is404 ? 'API indisponível' : 'Erro ao carregar atividades'}</p>
+                                <p class="text-sm text-gray-600">${errorMessage}</p>
                             </div>
                         </div>
                     `;
