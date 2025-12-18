@@ -70,15 +70,6 @@
         .modal-overlay.show .modal {
             transform: scale(1);
         }
-      .toast {
-        transform: translateX(100%);
-        opacity: 0;
-            transition: all 0.3s ease;
-        }
-      .toast.show {
-        transform: translateX(0);
-        opacity: 1;
-      }
       .section-content {
         display: none !important;
       }
@@ -309,7 +300,10 @@
                 <!-- Patients Section -->
                 <div class="section-content hidden" id="patientsSection">
                     <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
-                        <h2 class="text-2xl font-bold text-gray-800">Pacientes do SOC</h2>
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">Pacientes do SOC</h2>
+                            <p class="text-sm text-gray-600 mt-1">Pacientes agendados para hoje</p>
+                        </div>
                         <div class="relative flex-1 md:max-w-md">
                             <input 
                                 type="text" 
@@ -377,8 +371,6 @@
         </main>
     </div>
 
-    <!-- Toast Notifications Container -->
-    <div class="fixed top-5 right-5 z-[10000] flex flex-col gap-3" id="toastContainer"></div>
 
     <!-- Profile Edit Modal -->
     <div class="fixed top-0 left-0 right-0 bottom-0 bg-black/50 flex items-center justify-center z-[10000] modal-overlay" id="profileModal">

@@ -12,222 +12,6 @@ function getSOCUrl(data) {
     return `${baseURL}/soc?data=${dataParam}`;
 }
 
-        // Notification System
-        class NotificationSystem {
-            constructor() {
-                this.notifications = JSON.parse(localStorage.getItem('notifications')) || [];
-                this.unreadCount = this.notifications.filter(n => !n.read).length;
-                this.init();
-            }
-
-            init() {
-                this.updateBadge();
-                this.renderNotifications();
-                this.startRealTimeMonitoring();
-            }
-
-            addNotification(type, title, message, data = {}) {
-                const notification = {
-                    id: Date.now(),
-                    type: type, // 'info', 'success', 'warning', 'error'
-                    title: title,
-                    message: message,
-                    data: data,
-                    read: false,
-                    timestamp: new Date(),
-                    timeAgo: 'Agora'
-                };
-
-                this.notifications.unshift(notification);
-                this.unreadCount++;
-                this.saveNotifications();
-                this.updateBadge();
-                this.renderNotifications();
-                this.showToast(notification);
-            }
-
-            showToast(notification) {
-                const toastContainer = document.getElementById('toastContainer');
-                const toast = document.createElement('div');
-                toast.className = `toast ${notification.type}`;
-                toast.innerHTML = `
-                    <div class="toast-icon ${notification.type}">
-                        <i class="fas ${this.getIcon(notification.type)}"></i>
-                    </div>
-                    <div class="toast-content">
-                        <div class="toast-title">${notification.title}</div>
-                        <div class="toast-message">${notification.message}</div>
-                    </div>
-                    <button class="toast-close" onclick="this.parentElement.remove()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                `;
-
-                toastContainer.appendChild(toast);
-                
-                // Animate in
-                setTimeout(() => toast.classList.add('show'), 100);
-                
-                // Auto remove after 5 seconds
-                setTimeout(() => {
-                    toast.classList.remove('show');
-                    setTimeout(() => toast.remove(), 300);
-                }, 5000);
-            }
-
-            getIcon(type) {
-                const icons = {
-                    'info': 'fa-info',
-                    'success': 'fa-check',
-                    'warning': 'fa-exclamation-triangle',
-                    'error': 'fa-times'
-                };
-                return icons[type] || 'fa-info';
-            }
-
-            markAsRead(id) {
-                const notification = this.notifications.find(n => n.id === id);
-                if (notification && !notification.read) {
-                    notification.read = true;
-                    this.unreadCount--;
-                    this.saveNotifications();
-                    this.updateBadge();
-                    this.renderNotifications();
-                }
-            }
-
-            clearAllNotifications() {
-                this.notifications = [];
-                this.unreadCount = 0;
-                this.saveNotifications();
-                this.updateBadge();
-                this.renderNotifications();
-            }
-
-            updateBadge() {
-                const badge = document.getElementById('notificationBadge');
-                if (this.unreadCount > 0) {
-                    badge.style.display = 'block';
-                    badge.textContent = this.unreadCount > 9 ? '9+' : this.unreadCount;
-                } else {
-                    badge.style.display = 'none';
-                }
-            }
-
-            renderNotifications() {
-                const list = document.getElementById('notificationList');
-                
-                if (this.notifications.length === 0) {
-                    list.innerHTML = `
-                        <div class="notification-empty">
-                            <i class="fas fa-bell-slash"></i>
-                            <div>Nenhuma notificação</div>
-                        </div>
-                    `;
-                    return;
-                }
-
-                list.innerHTML = this.notifications.map(notification => `
-                    <div class="notification-item ${!notification.read ? 'unread' : ''}" 
-                         onclick="notificationSystem.markAsRead(${notification.id})">
-                        <div class="notification-icon ${notification.type}">
-                            <i class="fas ${this.getIcon(notification.type)}"></i>
-                        </div>
-                        <div class="notification-content">
-                            <div class="notification-text">${notification.title}</div>
-                            <div class="notification-text" style="font-size: 13px; color: #718096;">
-                                ${notification.message}
-                            </div>
-                            <div class="notification-time">${this.formatTime(notification.timestamp)}</div>
-                        </div>
-                        ${!notification.read ? '<div class="notification-dot"></div>' : ''}
-                    </div>
-                `).join('');
-            }
-
-            formatTime(timestamp) {
-                const now = new Date();
-                const diff = now - new Date(timestamp);
-                const minutes = Math.floor(diff / 60000);
-                const hours = Math.floor(diff / 3600000);
-                const days = Math.floor(diff / 86400000);
-
-                if (minutes < 1) return 'Agora';
-                if (minutes < 60) return `Há ${minutes}min`;
-                if (hours < 24) return `Há ${hours}h`;
-                return `Há ${days} dias`;
-            }
-
-            saveNotifications() {
-                localStorage.setItem('notifications', JSON.stringify(this.notifications));
-            }
-
-            startRealTimeMonitoring() {
-                // Monitora mudanças na API e gera notificações
-                setInterval(() => {
-                    this.checkForNewPatients();
-                    this.checkForLongWaiting();
-                    this.checkForCompletedConsultations();
-                }, 10000); // Verifica a cada 10 segundos
-            }
-
-            async checkForNewPatients() {
-                try {
-                    // Buscar senhas
-                    const response = await fetch(API_URL);
-                    const senhas = await response.json();
-                    
-                    // Verifica se há novas senhas (simulação)
-                    const newSenhas = senhas.filter(s => {
-                        const senhaTime = new Date(s.data);
-                        const now = new Date();
-                        return (now - senhaTime) < 30000; // Últimos 30 segundos
-                    });
-
-                    newSenhas.forEach(senha => {
-                        if (senha.status === 'pendente') {
-                            this.addNotification(
-                                'info',
-                                'Novo Paciente',
-                                `Senha ${senha.senha} - ${senha.nome || 'Sem nome'} aguardando atendimento`,
-                                { senha: senha.senha }
-                            );
-                        }
-                    });
-                } catch (error) {
-                    console.error('Erro ao verificar novos pacientes:', error);
-                }
-            }
-
-            checkForLongWaiting() {
-                // Simula verificação de pacientes aguardando há muito tempo
-                const longWaiting = Math.random() > 0.8; // 20% de chance
-                if (longWaiting) {
-                    this.addNotification(
-                        'warning',
-                        'Paciente Aguardando',
-                        'Há pacientes aguardando há mais de 30 minutos',
-                        { type: 'long_waiting' }
-                    );
-                }
-            }
-
-            checkForCompletedConsultations() {
-                // Simula notificação de consultas finalizadas
-                const completed = Math.random() > 0.9; // 10% de chance
-                if (completed) {
-                    this.addNotification(
-                        'success',
-                        'Consulta Finalizada',
-                        'Uma consulta foi finalizada com sucesso',
-                        { type: 'consultation_completed' }
-                    );
-                }
-            }
-        }
-
-        // Initialize notification system
-        const notificationSystem = new NotificationSystem();
 
         // Sidebar toggle
         function toggleSidebar() {
@@ -246,7 +30,7 @@ function getSOCUrl(data) {
 
         // Clear all notifications
         function clearAllNotifications() {
-            notificationSystem.clearAllNotifications();
+            // Função mantida para compatibilidade, mas não faz nada
         }
 
         // User menu toggle
@@ -338,13 +122,6 @@ function getSOCUrl(data) {
                 
                 // Update UI
                 updateUserDisplay(formData);
-                
-                // Show success notification
-                notificationSystem.addNotification(
-                    'success',
-                    'Perfil Atualizado',
-                    'Suas informações foram salvas com sucesso!'
-                );
                 
                 // Close modal
                 closeProfileModal();
@@ -630,13 +407,6 @@ function getSOCUrl(data) {
                 
                 localStorage.setItem('passwordChange', JSON.stringify(passwordData));
                 
-                // Show success notification
-                notificationSystem.addNotification(
-                    'success',
-                    'Senha Alterada',
-                    'Sua senha foi alterada com sucesso!'
-                );
-                
                 // Close modal
                 closePasswordModal();
                 
@@ -817,13 +587,6 @@ function getSOCUrl(data) {
                 // Apply settings
                 applySettings(settingsData);
                 
-                // Show success notification
-                notificationSystem.addNotification(
-                    'success',
-                    'Configurações Salvas',
-                    'Suas configurações foram salvas com sucesso!'
-                );
-                
                 // Close modal
                 closeSettingsModal();
                 
@@ -876,12 +639,6 @@ function getSOCUrl(data) {
             if (confirm('Deseja realmente redefinir todas as configurações para os valores padrão?')) {
                 localStorage.removeItem('userSettings');
                 loadSettingsData();
-                
-                notificationSystem.addNotification(
-                    'info',
-                    'Configurações Redefinidas',
-                    'Todas as configurações foram redefinidas para os valores padrão'
-                );
             }
         }
 
@@ -894,12 +651,6 @@ function getSOCUrl(data) {
             link.href = URL.createObjectURL(dataBlob);
             link.download = `safe_atendimento_settings_${new Date().toISOString().split('T')[0]}.json`;
             link.click();
-            
-            notificationSystem.addNotification(
-                'success',
-                'Configurações Exportadas',
-                'Suas configurações foram exportadas com sucesso!'
-            );
         }
 
         function importSettings() {
@@ -915,18 +666,8 @@ function getSOCUrl(data) {
                             const settings = JSON.parse(e.target.result);
                             localStorage.setItem('userSettings', JSON.stringify(settings));
                             loadSettingsData();
-                            
-                            notificationSystem.addNotification(
-                                'success',
-                                'Configurações Importadas',
-                                'Suas configurações foram importadas com sucesso!'
-                            );
                         } catch (error) {
-                            notificationSystem.addNotification(
-                                'error',
-                                'Erro na Importação',
-                                'Arquivo de configurações inválido'
-                            );
+                            console.error('Erro ao importar configurações:', error);
                         }
                     };
                     reader.readAsText(file);
@@ -1070,6 +811,69 @@ function getSOCUrl(data) {
 
         // Variável global para armazenar todos os pacientes do SOC
         let allPatientsData = [];
+        
+        // Variável para armazenar a data atual (para detectar mudança de dia)
+        let currentDate = new Date().toDateString();
+        
+        // Função para verificar se o dia mudou e atualizar automaticamente
+        function checkDateChange() {
+            const now = new Date();
+            const today = now.toDateString();
+            
+            // Se o dia mudou (meia-noite passou), atualizar dados
+            if (today !== currentDate) {
+                console.log('🔄 Novo dia detectado! Atualizando dados automaticamente...');
+                currentDate = today;
+                
+                // Limpar dados antigos de pacientes
+                allPatientsData = [];
+                
+                // Recarregar dados da seção ativa
+                const activeSection = document.querySelector('.section-content.active');
+                if (activeSection && activeSection.id === 'patientsSection') {
+                    console.log('📋 Recarregando pacientes para o novo dia...');
+                    loadPatientsFromSOC();
+                } else if (activeSection && activeSection.id === 'dashboardSection') {
+                    console.log('📊 Recarregando dashboard para o novo dia...');
+                    loadDashboardData();
+                    loadRecentActivity();
+                }
+            }
+        }
+        
+        // Função para calcular próxima meia-noite e agendar atualização
+        function scheduleMidnightUpdate() {
+            const now = new Date();
+            const midnight = new Date();
+            midnight.setHours(24, 0, 0, 0); // Próxima meia-noite (00:00:00)
+            
+            const msUntilMidnight = midnight.getTime() - now.getTime();
+            
+            console.log(`⏰ Próxima atualização automática agendada para meia-noite (em ${Math.round(msUntilMidnight / 1000 / 60)} minutos)`);
+            
+            // Agendar atualização na meia-noite
+            setTimeout(() => {
+                console.log('🕛 Meia-noite! Atualizando dados automaticamente...');
+                
+                // Atualizar data atual
+                currentDate = new Date().toDateString();
+                
+                // Limpar dados antigos de pacientes
+                allPatientsData = [];
+                
+                // Recarregar dados da seção ativa
+                const activeSection = document.querySelector('.section-content.active');
+                if (activeSection && activeSection.id === 'patientsSection') {
+                    loadPatientsFromSOC();
+                } else if (activeSection && activeSection.id === 'dashboardSection') {
+                    loadDashboardData();
+                    loadRecentActivity();
+                }
+                
+                // Agendar próxima atualização (para o próximo dia)
+                scheduleMidnightUpdate();
+            }, msUntilMidnight);
+        }
 
         // Load patients from SOC - mesma lógica usada no index.js para buscar no SOC
         async function loadPatientsFromSOC() {
@@ -1087,8 +891,8 @@ function getSOCUrl(data) {
             
             try {
                 // Mesma lógica do index.js: buscar SOC com data de hoje
-                const hoje = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-                const socUrl = getSOCUrl(hoje);
+                const hojeISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                const socUrl = getSOCUrl(hojeISO);
                 console.log('Buscando pacientes do SOC na URL:', socUrl);
                 
                 const response = await fetch(socUrl);
@@ -1104,23 +908,54 @@ function getSOCUrl(data) {
                     throw new Error('Resposta da API SOC não é um array');
                 }
                 
-                // Armazenar todos os pacientes globalmente para filtro
-                allPatientsData = consultasSOC;
+                // Filtrar apenas pacientes do dia atual
+                // Obter data de hoje no formato DD/MM/YYYY (mesmo formato que vem da API)
+                const hoje = new Date();
+                const dia = String(hoje.getDate()).padStart(2, '0');
+                const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+                const ano = hoje.getFullYear();
+                const hojeFormatadoBR = `${dia}/${mes}/${ano}`;
                 
-                if (consultasSOC.length === 0) {
+                console.log('🔍 Filtrando pacientes para a data:', hojeFormatadoBR);
+                console.log('📊 Total de pacientes retornados pela API:', consultasSOC.length);
+                
+                // Filtrar pacientes que têm DATACOMPROMISSO igual a hoje
+                const pacientesDoDia = consultasSOC.filter(consulta => {
+                    if (!consulta.DATACOMPROMISSO) {
+                        return false;
+                    }
+                    
+                    // Normalizar a data para string e remover espaços
+                    const dataCompromisso = String(consulta.DATACOMPROMISSO).trim();
+                    
+                    // Comparar diretamente (ambas no formato DD/MM/YYYY)
+                    if (dataCompromisso === hojeFormatadoBR) {
+                        return true;
+                    }
+                    
+                    // Se a data não corresponde, retornar false
+                    return false;
+                });
+                
+                console.log('✅ Pacientes filtrados para hoje:', pacientesDoDia.length);
+                
+                // Armazenar apenas pacientes do dia para o filtro
+                allPatientsData = pacientesDoDia;
+                
+                if (pacientesDoDia.length === 0) {
                     patientsGrid.innerHTML = `
                         <div class="col-span-full text-center py-10 text-gray-500">
                             <i class="fas fa-users text-5xl mb-4 text-gray-300"></i>
-                            <h3 class="text-lg font-semibold mb-2">Nenhum paciente encontrado no SOC</h3>
-                            <p class="text-sm">Não há pacientes agendados para hoje no SOC</p>
+                            <h3 class="text-lg font-semibold mb-2">Nenhum paciente encontrado para hoje</h3>
+                            <p class="text-sm">Não há pacientes agendados para ${hojeFormatadoBR} no SOC</p>
                         </div>
                     `;
                     if (patientsCount) patientsCount.textContent = '';
                     return;
                 }
-                
-                // Renderizar pacientes (sem filtro inicial)
-                renderPatients(consultasSOC);
+            
+                // Renderizar pacientes do dia (sem filtro inicial)
+                renderPatients(pacientesDoDia);
                 
             } catch (error) {
                 console.error('Erro ao carregar pacientes do SOC:', error);
@@ -1156,7 +991,7 @@ function getSOCUrl(data) {
                                         <li>Execute: <code class="bg-blue-100 px-1 rounded">npm start</code> ou <code class="bg-blue-100 px-1 rounded">npm run dev</code></li>
                                         <li>Verifique se está rodando na porta 3000</li>
                                     </ol>
-                                </div>
+                        </div>
                             ` : ''}
                             <p class="text-xs text-gray-500 mt-4 mb-2">URL esperada:</p>
                             <code class="text-xs bg-gray-100 px-2 py-1 rounded break-all block">${socUrl}</code>
@@ -1214,7 +1049,7 @@ function getSOCUrl(data) {
                         <div class="flex items-center gap-4 mb-3">
                             <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-lg">
                                 ${inicial}
-                            </div>
+                </div>
                             <div class="flex-1 min-w-0">
                                 <h4 class="font-semibold text-gray-800 truncate">${nomeDisplay}</h4>
                                 <p class="text-sm text-gray-600">CPF: ${cpfFormatado}</p>
@@ -1353,8 +1188,8 @@ function getSOCUrl(data) {
             consultationsList.innerHTML = senhasHoje.map(senha => {
                 const dataHora = new Date(senha.data);
                 const horaFormatada = dataHora.toLocaleTimeString('pt-BR', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
                 });
                 const nomeDisplay = senha.nome || 'Sem nome';
                 const statusText = senha.status === 'atendida' ? 'Atendido' : 
@@ -1367,7 +1202,7 @@ function getSOCUrl(data) {
                     <div class="flex items-center gap-4 p-4 border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors">
                         <div class="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold">
                             ${horaFormatada}
-                        </div>
+                    </div>
                         <div class="flex-1">
                             <div class="font-semibold text-gray-800 mb-1">${nomeDisplay}</div>
                             <div class="text-sm text-gray-600 flex items-center gap-3">
@@ -1375,9 +1210,9 @@ function getSOCUrl(data) {
                                 <span class="px-2 py-1 rounded-full text-xs font-medium ${statusClass}">
                                     ${statusText}
                                 </span>
-                            </div>
                         </div>
                     </div>
+                </div>
                 `;
             }).join('');
         }
@@ -1456,18 +1291,13 @@ function getSOCUrl(data) {
                 if (naFilaEl) naFilaEl.textContent = is404 ? '?' : '0';
                 if (tempoMedioEl) tempoMedioEl.textContent = is404 ? '--' : '0min';
                 
-                // Mostrar notificação de erro apenas na primeira vez
+                // Log erro apenas na primeira vez
                 if (!window.dashboardErrorShown) {
                     window.dashboardErrorShown = true;
                     const message = is404 
                         ? 'Backend indisponível. Verifique se o servidor Railway está rodando.'
                         : 'Não foi possível carregar os dados do dashboard. Verifique sua conexão.';
-                    
-                    notificationSystem.addNotification(
-                        'warning',
-                        'API Indisponível',
-                        message
-                    );
+                    console.warn('API Indisponível:', message);
                 }
             }
         }
@@ -1484,19 +1314,7 @@ function getSOCUrl(data) {
             const reportName = reportTypes[type] || 'Relatório';
             
             // Simula geração de relatório
-            const loadingToast = notificationSystem.addNotification(
-                'info',
-                'Gerando Relatório',
-                `${reportName} está sendo gerado...`
-            );
-            
             setTimeout(() => {
-                notificationSystem.addNotification(
-                    'success',
-                    'Relatório Gerado',
-                    `${reportName} foi gerado com sucesso!`
-                );
-                
                 // Simula download do relatório
                 const link = document.createElement('a');
                 link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(
@@ -1554,7 +1372,7 @@ function getSOCUrl(data) {
                         const dataB = new Date(b.data);
                         return dataB - dataA; // Mais recentes primeiro
                     })
-                    .slice(0, 5); // Últimas 5 atividades
+                                      .slice(0, 5); // Últimas 5 atividades
                 
                 if (senhasHoje.length === 0) {
                     activityList.innerHTML = `
@@ -1651,19 +1469,22 @@ function getSOCUrl(data) {
                 clearInterval(refreshInterval);
             }
             
+            // Verificar mudança de dia a cada minuto (backup caso o setTimeout falhe)
+            setInterval(checkDateChange, 60000); // 60000ms = 1 minuto
+            
             // Configurar auto-refresh a cada 30 segundos
             refreshInterval = setInterval(() => {
-                loadDashboardData();
-                loadRecentActivity();
-            }, 30000);
+            loadDashboardData();
+            loadRecentActivity();
+        }, 30000);
         }
 
         // Load initial data when DOM is ready
         function initDashboard() {
             // Verificar se os elementos necessários existem
             if (document.getElementById('pacientesHoje') && document.getElementById('activityList')) {
-                loadDashboardData();
-                loadRecentActivity();
+        loadDashboardData();
+        loadRecentActivity();
                 startAutoRefresh();
             } else {
                 // Tentar novamente após um pequeno delay se os elementos não existirem ainda
@@ -1677,6 +1498,12 @@ function getSOCUrl(data) {
         } else {
             initDashboard();
         }
+        
+        // Agendar atualização automática na meia-noite (quando o dia mudar)
+        scheduleMidnightUpdate();
+        
+        // Agendar atualização automática na meia-noite (quando o dia mudar)
+        scheduleMidnightUpdate();
 
         // Mobile sidebar handling
         if (window.innerWidth <= 768) {

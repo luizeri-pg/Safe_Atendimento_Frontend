@@ -50,6 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Simulate API call
       setTimeout(() => {
         if (validateCredentials(email, password, selectedRole)) {
+          // Salvar informações do usuário logado no localStorage
+          localStorage.setItem('loggedUser', JSON.stringify({ email, role: selectedRole }));
           showSuccess('Login realizado com sucesso!');
           setTimeout(() => {
             redirectToDashboard(selectedRole);
@@ -77,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function validateCredentials(email, password, role) {
   const validCredentials = {
     'medico@safe.com': { password: 'senha123', role: 'medico' },
+    'medico2@safe.com': { password: 'senha123', role: 'medico' },
     'atendente@safe.com': { password: 'senha123', role: 'atendente' }
   };
 
