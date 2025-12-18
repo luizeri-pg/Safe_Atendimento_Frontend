@@ -141,3 +141,5 @@ Para verificar qual API está sendo usada, abra o console do navegador (F12) e p
 🚀 API Config carregada: {...}
 ```
 
+
+
