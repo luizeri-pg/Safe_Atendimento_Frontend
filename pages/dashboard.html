@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safe Atendimento - Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              secondary: {
+                500: '#EC297B',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Apenas animações customizadas que não podem ser feitas com Tailwind */
+      @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.2); opacity: 0.7; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .notification-badge {
+        animation: pulse 2s infinite;
+      }
+      .sidebar.collapsed {
+        transform: translateX(-100%);
+      }
+        .main-content.expanded {
+            margin-left: 0;
+        }
+        .notification-dropdown {
+            transform: translateY(-10px);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .notification-dropdown.show {
+            transform: translateY(0);
+            opacity: 1;
+            visibility: visible;
+        }
+        .user-menu-dropdown {
+            transform: translateY(-10px);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .user-menu-dropdown.show {
+            transform: translateY(0);
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-overlay {
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-overlay.show .modal {
+            transform: scale(1);
+        }
+      .toast {
+        transform: translateX(100%);
+        opacity: 0;
+            transition: all 0.3s ease;
+        }
+      .toast.show {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      .section-content {
+        display: none;
+      }
+      .section-content.active {
+            display: block;
+      }
+        input:checked + .toggle-slider {
+            background-color: #3b82f6;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+    </style>
+</head>
+<body class="font-sans bg-gray-50 min-h-screen">
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <nav class="w-[280px] bg-gradient-to-br from-blue-500 to-blue-700 text-white py-6 fixed h-screen overflow-y-auto z-[1000] transition-transform duration-300 sidebar" id="sidebar">
+            <div class="px-6 pb-8 border-b border-white/10 mb-6">
+                <div class="flex items-center gap-3 mb-2">
+                    <i class="fas fa-user-md text-3xl text-white"></i>
+                    <h1 class="text-xl font-extrabold">Safe Atendimento</h1>
+                </div>
+                <div class="text-sm opacity-80 ml-10">Sistema de Gestão Médica</div>
+            </div>
+
+            <div class="px-4">
+                <div class="mb-8">
+                    <div class="text-xs font-semibold uppercase tracking-wide opacity-70 mb-3 px-4">Principal</div>
+                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item active bg-white/20 font-semibold" onclick="showSection('dashboard')">
+                        <i class="fas fa-home text-base w-5 text-center"></i>
+                        <span class="text-sm">Dashboard</span>
+                    </a>
+                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item" onclick="showSection('pacientes')">
+                        <i class="fas fa-users text-base w-5 text-center"></i>
+                        <span class="text-sm">Pacientes</span>
+                    </a>
+                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item" onclick="showSection('consultas')">
+                        <i class="fas fa-calendar-alt text-base w-5 text-center"></i>
+                        <span class="text-sm">Consultas</span>
+                    </a>
+                </div>
+
+                <div class="mb-8">
+                    <div class="text-xs font-semibold uppercase tracking-wide opacity-70 mb-3 px-4">Atendimento</div>
+                    <a href="atendente.html" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
+                        <i class="fas fa-user-nurse text-base w-5 text-center"></i>
+                        <span class="text-sm">Painel Atendente</span>
+                    </a>
+                    <a href="medico.html" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
+                        <i class="fas fa-user-md text-base w-5 text-center"></i>
+                        <span class="text-sm">Painel Médico</span>
+                    </a>
+                    <a href="painel.html" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
+                        <i class="fas fa-tv text-base w-5 text-center"></i>
+                        <span class="text-sm">Painel Público</span>
+                    </a>
+                </div>
+
+                <div class="mb-8">
+                    <div class="text-xs font-semibold uppercase tracking-wide opacity-70 mb-3 px-4">Relatórios</div>
+                    <a href="historico.html" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
+                        <i class="fas fa-chart-line text-base w-5 text-center"></i>
+                        <span class="text-sm">Histórico</span>
+                    </a>
+                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
+                        <i class="fas fa-file-alt text-base w-5 text-center"></i>
+                        <span class="text-sm">Relatórios</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="absolute bottom-6 left-6 right-6 p-4 bg-white/10 rounded-xl backdrop-blur-lg">
+                <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center mb-2">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="font-semibold text-sm mb-1" id="userName">Dr. João Silva</div>
+                <div class="text-xs opacity-80" id="userRole">Médico</div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 ml-[280px] transition-all duration-300 main-content" id="mainContent">
+            <!-- Topbar -->
+            <div class="bg-white py-4 px-6 border-b border-gray-200 flex items-center justify-between sticky top-0 z-[100] topbar">
+                <div class="flex items-center gap-4">
+                    <button class="bg-transparent border-none text-xl text-gray-700 cursor-pointer p-2 rounded-lg transition-colors duration-300 hover:bg-gray-50" onclick="toggleSidebar()">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="relative cursor-pointer p-2 rounded-lg transition-colors duration-300 hover:bg-gray-50 notifications" onclick="toggleNotifications()">
+                        <i class="fas fa-bell"></i>
+                        <div class="absolute top-1 right-1 w-2 h-2 bg-red-600 rounded-full notification-badge" id="notificationBadge"></div>
+                        <div class="absolute top-full right-0 w-[400px] max-w-[90vw] bg-white rounded-xl shadow-2xl border border-gray-200 z-[1000] notification-dropdown" id="notificationDropdown">
+                            <div class="p-4 border-b border-gray-200 flex items-center justify-between notification-header">
+                                <h3 class="text-base font-semibold text-gray-800">Notificações</h3>
+                                <button class="bg-transparent border-none text-blue-500 text-xs cursor-pointer py-1 px-2 rounded transition-colors duration-300 hover:bg-gray-50" onclick="clearAllNotifications()">Limpar todas</button>
+                            </div>
+                            <div class="max-h-[400px] overflow-y-auto notification-list" id="notificationList">
+                                <!-- Notificações serão inseridas aqui dinamicamente -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 cursor-pointer p-2 px-3 rounded-lg transition-colors duration-300 relative hover:bg-gray-50 user-menu" onclick="toggleUserMenu()">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-semibold">JS</div>
+                        <span>Dr. João Silva</span>
+                        <i class="fas fa-chevron-down"></i>
+                        <div class="absolute top-full right-0 w-[200px] bg-white rounded-xl shadow-2xl border border-gray-200 z-[1000] user-menu-dropdown" id="userMenuDropdown">
+                            <div class="flex items-center gap-3 py-3 px-4 cursor-pointer transition-colors duration-300 border-b border-gray-100 hover:bg-gray-50" onclick="editProfile()">
+                                <i class="fas fa-user-edit w-4 text-center text-gray-600"></i>
+                                <span class="text-sm text-gray-700">Editar Perfil</span>
+                    </div>
+                            <div class="flex items-center gap-3 py-3 px-4 cursor-pointer transition-colors duration-300 border-b border-gray-100 hover:bg-gray-50" onclick="changePassword()">
+                                <i class="fas fa-key w-4 text-center text-gray-600"></i>
+                                <span class="text-sm text-gray-700">Alterar Senha</span>
+                            </div>
+                            <div class="flex items-center gap-3 py-3 px-4 cursor-pointer transition-colors duration-300 border-b border-gray-100 hover:bg-gray-50" onclick="settings()">
+                                <i class="fas fa-cog w-4 text-center text-gray-600"></i>
+                                <span class="text-sm text-gray-700">Configurações</span>
+                            </div>
+                            <div class="flex items-center gap-3 py-3 px-4 cursor-pointer transition-colors duration-300 text-red-600 hover:bg-red-50" onclick="logout()">
+                                <i class="fas fa-sign-out-alt w-4 text-center"></i>
+                                <span class="text-sm">Sair</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="p-6">
+                <!-- Dashboard Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 dashboard-grid">
+                    <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-200 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dashboard-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-base font-semibold text-gray-700">Pacientes Hoje</h3>
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-lg text-white">
+                                <i class="fas fa-users"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-extrabold text-gray-800 mb-2" id="pacientesHoje">0</div>
+                        <div class="text-sm font-medium text-green-600">
+                            <i class="fas fa-arrow-up"></i> +12% vs ontem
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-200 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dashboard-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-base font-semibold text-gray-700">Consultas Realizadas</h3>
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-lg text-white">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-extrabold text-gray-800 mb-2" id="consultasRealizadas">0</div>
+                        <div class="text-sm font-medium text-green-600">
+                            <i class="fas fa-arrow-up"></i> +8% vs ontem
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-200 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dashboard-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-base font-semibold text-gray-700">Na Fila</h3>
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-lg text-white">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-extrabold text-gray-800 mb-2" id="naFila">0</div>
+                        <div class="text-sm font-medium text-gray-600">
+                            <i class="fas fa-minus"></i> Sem mudança
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-200 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dashboard-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-base font-semibold text-gray-700">Tempo Médio</h3>
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-lg text-white">
+                                <i class="fas fa-stopwatch"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-extrabold text-gray-800 mb-2" id="tempoMedio">0min</div>
+                        <div class="text-sm font-medium text-red-600">
+                            <i class="fas fa-arrow-down"></i> -5% vs ontem
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-200 mb-8 quick-actions">
+                    <h3 class="text-lg font-bold text-gray-800 mb-5">Ações Rápidas</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 actions-grid">
+                        <a href="index.html" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
+                            <i class="fas fa-plus text-xl"></i>
+                            <span class="font-semibold text-sm">Novo Atendimento</span>
+                        </a>
+                        <a href="atendente.html" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
+                            <i class="fas fa-user-nurse text-xl"></i>
+                            <span class="font-semibold text-sm">Painel Atendente</span>
+                        </a>
+                        <a href="medico.html" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
+                            <i class="fas fa-user-md text-xl"></i>
+                            <span class="font-semibold text-sm">Painel Médico</span>
+                        </a>
+                        <a href="painel.html" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
+                            <i class="fas fa-tv text-xl"></i>
+                            <span class="font-semibold text-sm">Painel Público</span>
+                        </a>
+                        <a href="historico.html" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
+                            <i class="fas fa-chart-line text-xl"></i>
+                            <span class="font-semibold text-sm">Ver Histórico</span>
+                        </a>
+                        <a href="#" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl" onclick="gerarRelatorio()">
+                            <i class="fas fa-file-alt text-xl"></i>
+                            <span class="font-semibold text-sm">Gerar Relatório</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-200 recent-activity">
+                    <h3 class="text-lg font-bold text-gray-800 mb-5">Atividade Recente</h3>
+                    <div id="activityList">
+                        <!-- Atividade será carregada dinamicamente -->
+                            </div>
+                            </div>
+
+                <!-- Patients Section -->
+                <div class="hidden section-content" id="patientsSection">
+                    <h2 class="mb-6">Pacientes</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6" id="patientsGrid">
+                        <!-- Pacientes serão carregados dinamicamente -->
+                        </div>
+                            </div>
+
+                <!-- Consultations Section -->
+                <div class="hidden section-content" id="consultationsSection">
+                    <h2 class="mb-6">Consultas</h2>
+                    <div class="bg-white rounded-xl p-6 shadow-md border border-gray-200" id="consultationsList">
+                        <!-- Consultas serão carregadas dinamicamente -->
+                            </div>
+                        </div>
+
+                <!-- Reports Section -->
+                <div class="hidden section-content" id="reportsSection">
+                    <h2 class="mb-6">Relatórios</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                        <div class="bg-white rounded-xl p-6 shadow-md border border-gray-200 text-center cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl" onclick="generateReport('daily')">
+                            <div class="w-15 h-15 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl text-white">
+                                <i class="fas fa-calendar-day"></i>
+                            </div>
+                            <div class="text-base font-semibold text-gray-800 mb-2">Relatório Diário</div>
+                            <div class="text-sm text-gray-600 mb-4">Atendimentos do dia atual</div>
+                            <button class="bg-gradient-to-r from-blue-500 to-blue-700 text-white border-none rounded-lg py-2 px-4 text-sm font-semibold cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30">Gerar</button>
+                            </div>
+                        <div class="bg-white rounded-xl p-6 shadow-md border border-gray-200 text-center cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl" onclick="generateReport('weekly')">
+                            <div class="w-15 h-15 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl text-white">
+                                <i class="fas fa-calendar-week"></i>
+                        </div>
+                            <div class="text-base font-semibold text-gray-800 mb-2">Relatório Semanal</div>
+                            <div class="text-sm text-gray-600 mb-4">Atendimentos da semana</div>
+                            <button class="bg-gradient-to-r from-blue-500 to-blue-700 text-white border-none rounded-lg py-2 px-4 text-sm font-semibold cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30">Gerar</button>
+                    </div>
+                        <div class="bg-white rounded-xl p-6 shadow-md border border-gray-200 text-center cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl" onclick="generateReport('monthly')">
+                            <div class="w-15 h-15 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl text-white">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <div class="text-base font-semibold text-gray-800 mb-2">Relatório Mensal</div>
+                            <div class="text-sm text-gray-600 mb-4">Atendimentos do mês</div>
+                            <button class="bg-gradient-to-r from-blue-500 to-blue-700 text-white border-none rounded-lg py-2 px-4 text-sm font-semibold cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30">Gerar</button>
+                        </div>
+                        <div class="bg-white rounded-xl p-6 shadow-md border border-gray-200 text-center cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl" onclick="generateReport('productivity')">
+                            <div class="w-15 h-15 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl text-white">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <div class="text-base font-semibold text-gray-800 mb-2">Produtividade</div>
+                            <div class="text-sm text-gray-600 mb-4">Análise de produtividade</div>
+                            <button class="bg-gradient-to-r from-blue-500 to-blue-700 text-white border-none rounded-lg py-2 px-4 text-sm font-semibold cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30">Gerar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div class="fixed top-5 right-5 z-[10000] flex flex-col gap-3" id="toastContainer"></div>
+
+    <!-- Profile Edit Modal -->
+    <div class="fixed top-0 left-0 right-0 bottom-0 bg-black/50 flex items-center justify-center z-[10000] modal-overlay" id="profileModal">
+        <div class="bg-white rounded-2xl p-8 max-w-[500px] w-[90%] max-h-[90vh] overflow-y-auto transform scale-90 transition-all duration-300 shadow-2xl modal">
+            <div class="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800 flex items-center gap-3">
+                    <i class="fas fa-user-edit"></i>
+                    Editar Perfil
+                </h2>
+                <button class="bg-transparent border-none text-gray-400 cursor-pointer p-2 rounded-lg transition-all duration-300 hover:bg-gray-50 hover:text-gray-700" onclick="closeProfileModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="profileForm" onsubmit="saveProfile(event)">
+                <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white text-3xl font-semibold mx-auto mb-6 cursor-pointer transition-all duration-300 hover:scale-105" onclick="document.getElementById('avatarInput').click()">
+                    <i class="fas fa-camera"></i>
+                    <input type="file" id="avatarInput" class="hidden" accept="image/*">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="mb-5">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2" for="firstName">Nome</label>
+                        <input type="text" id="firstName" class="w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" value="João" required>
+                    </div>
+                    <div class="mb-5">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2" for="lastName">Sobrenome</label>
+                        <input type="text" id="lastName" class="w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" value="Silva" required>
+                    </div>
+                </div>
+                
+                <div class="mb-5">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2" for="email">E-mail</label>
+                    <input type="email" id="email" class="w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" value="medico@safe.com" required>
+                    <div class="text-xs text-gray-600 mt-1">Este será seu e-mail de login</div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="mb-5">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2" for="phone">Telefone</label>
+                        <input type="tel" id="phone" class="w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" value="(11) 99999-9999">
+                    </div>
+                    <div class="mb-5">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2" for="crm">CRM</label>
+                        <input type="text" id="crm" class="w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" value="123456-SP" required>
+                    </div>
+                </div>
+                
+                <div class="mb-5">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2" for="specialty">Especialidade</label>
+                    <select id="specialty" class="w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" required>
+                        <option value="clinica-geral">Clínica Geral</option>
+                        <option value="cardiologia">Cardiologia</option>
+                        <option value="dermatologia">Dermatologia</option>
+                        <option value="pediatria">Pediatria</option>
+                        <option value="ginecologia">Ginecologia</option>
+                        <option value="ortopedia">Ortopedia</option>
+                        <option value="neurologia">Neurologia</option>
+                        <option value="psiquiatria">Psiquiatria</option>
+                    </select>
+                </div>
+                
+                <div class="mb-5">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2" for="bio">Biografia</label>
+                    <textarea id="bio" class="w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" rows="3" placeholder="Conte um pouco sobre sua experiência profissional...">Médico com mais de 10 anos de experiência em clínica geral, especializado em atendimento humanizado e medicina preventiva.</textarea>
+                </div>
+                
+                <div class="flex gap-3 justify-end mt-8 pt-6 border-t border-gray-200">
+                    <button type="button" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border-none bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100" onclick="closeProfileModal()">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border-none bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30">
+                        <i class="fas fa-save"></i>
+                        Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Password Change Modal -->
+    <div class="fixed top-0 left-0 right-0 bottom-0 bg-black/50 flex items-center justify-center z-[10000] modal-overlay" id="passwordModal">
+        <div class="bg-white rounded-2xl p-8 max-w-[500px] w-[90%] max-h-[90vh] overflow-y-auto transform scale-90 transition-all duration-300 shadow-2xl modal">
+            <div class="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800 flex items-center gap-3">
+                    <i class="fas fa-key"></i>
+                    Alterar Senha
+                </h2>
+                <button class="bg-transparent border-none text-gray-400 cursor-pointer p-2 rounded-lg transition-all duration-300 hover:bg-gray-50 hover:text-gray-700" onclick="closePasswordModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="passwordForm" onsubmit="savePassword(event)">
+                <div class="mb-5">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2" for="currentPassword">Senha Atual</label>
+                    <div class="relative">
+                        <input type="password" id="currentPassword" class="w-full py-3 px-4 pr-12 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" placeholder="Digite sua senha atual" required>
+                        <button type="button" class="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent border-none text-gray-400 cursor-pointer p-1 rounded transition-all duration-300 hover:text-gray-700 hover:bg-gray-50" onclick="togglePasswordVisibility('currentPassword')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="text-xs text-gray-600 mt-1">Digite sua senha atual para confirmar a alteração</div>
+                </div>
+                
+                <div class="mb-5">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2" for="newPassword">Nova Senha</label>
+                    <div class="relative">
+                        <input type="password" id="newPassword" class="w-full py-3 px-4 pr-12 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" placeholder="Digite sua nova senha" required>
+                        <button type="button" class="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent border-none text-gray-400 cursor-pointer p-1 rounded transition-all duration-300 hover:text-gray-700 hover:bg-gray-50" onclick="togglePasswordVisibility('newPassword')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="mt-2 text-xs" id="passwordStrength"></div>
+                    <div class="mt-2 text-xs text-gray-600">
+                        <ul class="m-1 pl-4">
+                            <li id="req-length" class="text-red-600 mb-0.5">Pelo menos 6 caracteres</li>
+                            <li id="req-different" class="text-red-600 mb-0.5">Diferente da senha atual</li>
+                            <li id="req-match" class="text-red-600 mb-0.5">Confirmação deve ser igual</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="mb-5">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2" for="confirmPassword">Confirmar Nova Senha</label>
+                    <div class="relative">
+                        <input type="password" id="confirmPassword" class="w-full py-3 px-4 pr-12 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10" placeholder="Digite novamente sua nova senha" required>
+                        <button type="button" class="absolute right-3 top-1/2 transform -translate-y-1/2 bg-transparent border-none text-gray-400 cursor-pointer p-1 rounded transition-all duration-300 hover:text-gray-700 hover:bg-gray-50" onclick="togglePasswordVisibility('confirmPassword')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3 justify-end mt-8 pt-6 border-t border-gray-200">
+                    <button type="button" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border-none bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100" onclick="closePasswordModal()">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border-none bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30">
+                        <i class="fas fa-key"></i>
+                        Alterar Senha
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="fixed top-0 left-0 right-0 bottom-0 bg-black/50 flex items-center justify-center z-[10000] modal-overlay" id="settingsModal">
+        <div class="bg-white rounded-2xl p-8 max-w-[800px] w-[90%] max-h-[90vh] overflow-y-auto transform scale-90 transition-all duration-300 shadow-2xl modal">
+            <div class="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-800 flex items-center gap-3">
+                    <i class="fas fa-cog"></i>
+                    Configurações
+                </h2>
+                <button class="bg-transparent border-none text-gray-400 cursor-pointer p-2 rounded-lg transition-all duration-300 hover:bg-gray-50 hover:text-gray-700" onclick="closeSettingsModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="settingsForm" onsubmit="saveSettings(event)">
+                <!-- Notifications Section -->
+                <div class="mb-8 pb-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-3">
+                        <i class="fas fa-bell text-blue-500"></i>
+                        Notificações
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Notificações por E-mail</div>
+                                <div class="text-xs text-gray-600">Receber notificações por e-mail</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="emailNotifications" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Notificações Push</div>
+                                <div class="text-xs text-gray-600">Receber notificações no navegador</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="pushNotifications" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Som de Notificação</div>
+                                <div class="text-xs text-gray-600">Reproduzir som nas notificações</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="soundNotifications" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Notificações Desktop</div>
+                                <div class="text-xs text-gray-600">Mostrar notificações na área de trabalho</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="desktopNotifications" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Display Section -->
+                <div class="mb-8 pb-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-3">
+                        <i class="fas fa-palette text-blue-500"></i>
+                        Aparência
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Tema</div>
+                                <div class="text-xs text-gray-600">Escolha o tema da interface</div>
+                            </div>
+                            <div class="ml-4">
+                                <select id="theme" class="min-w-[120px] w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10">
+                                    <option value="light">Claro</option>
+                                    <option value="dark">Escuro</option>
+                                    <option value="auto">Automático</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Idioma</div>
+                                <div class="text-xs text-gray-600">Idioma da interface</div>
+                            </div>
+                            <div class="ml-4">
+                                <select id="language" class="min-w-[120px] w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10">
+                                    <option value="pt-BR">Português (Brasil)</option>
+                                    <option value="en-US">English (US)</option>
+                                    <option value="es-ES">Español</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Fuso Horário</div>
+                                <div class="text-xs text-gray-600">Fuso horário para exibição</div>
+                            </div>
+                            <div class="ml-4">
+                                <select id="timezone" class="min-w-[120px] w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10">
+                                    <option value="America/Sao_Paulo">São Paulo (GMT-3)</option>
+                                    <option value="America/New_York">Nova York (GMT-5)</option>
+                                    <option value="Europe/London">Londres (GMT+0)</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Formato de Data</div>
+                                <div class="text-xs text-gray-600">Como exibir as datas</div>
+                            </div>
+                            <div class="ml-4">
+                                <select id="dateFormat" class="min-w-[120px] w-full py-3 px-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10">
+                                    <option value="DD/MM/YYYY">DD/MM/AAAA</option>
+                                    <option value="MM/DD/YYYY">MM/DD/AAAA</option>
+                                    <option value="YYYY-MM-DD">AAAA-MM-DD</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Section -->
+                <div class="mb-8 pb-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-3">
+                        <i class="fas fa-cogs text-blue-500"></i>
+                        Sistema
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Atualização Automática</div>
+                                <div class="text-xs text-gray-600">Atualizar dados automaticamente</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="autoRefresh" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Intervalo de Atualização</div>
+                                <div class="text-xs text-gray-600">Frequência de atualização (segundos)</div>
+                            </div>
+                            <div class="ml-4">
+                                <input type="range" id="refreshInterval" class="w-[100px]" min="10" max="300" value="30">
+                                <span id="refreshValue" class="ml-2 text-sm">30s</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Logout Automático</div>
+                                <div class="text-xs text-gray-600">Fazer logout após inatividade</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="autoLogout" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Tempo de Logout</div>
+                                <div class="text-xs text-gray-600">Minutos de inatividade para logout</div>
+                            </div>
+                            <div class="ml-4">
+                                <input type="range" id="logoutTime" class="w-[100px]" min="5" max="120" value="60">
+                                <span id="logoutValue" class="ml-2 text-sm">60min</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Privacy Section -->
+                <div class="mb-8 pb-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-3">
+                        <i class="fas fa-shield-alt text-blue-500"></i>
+                        Privacidade
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Analytics</div>
+                                <div class="text-xs text-gray-600">Permitir coleta de dados de uso</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="analytics" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Cookies</div>
+                                <div class="text-xs text-gray-600">Aceitar cookies do sistema</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="cookies" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-1">
+                                <div class="text-sm font-semibold text-gray-800 mb-1">Compartilhamento de Dados</div>
+                                <div class="text-xs text-gray-600">Permitir compartilhamento com terceiros</div>
+                            </div>
+                            <div class="ml-4">
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="dataSharing" class="opacity-0 w-0 h-0">
+                                    <span class="absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-gray-300 rounded-full transition duration-400 before:absolute before:content-[''] before:h-[18px] before:w-[18px] before:left-[3px] before:bottom-[3px] before:bg-white before:rounded-full before:transition before:duration-400 toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 justify-end mt-8 pt-6 border-t border-gray-200">
+                    <button type="button" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border border-gray-200 bg-transparent text-gray-700 hover:bg-gray-50" onclick="exportSettings()">
+                        <i class="fas fa-download"></i>
+                        Exportar
+                    </button>
+                    <button type="button" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border border-gray-200 bg-transparent text-gray-700 hover:bg-gray-50" onclick="importSettings()">
+                        <i class="fas fa-upload"></i>
+                        Importar
+                    </button>
+                    <button type="button" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border-none bg-red-600 text-white hover:bg-red-700" onclick="resetSettings()">
+                        <i class="fas fa-undo"></i>
+                        Redefinir
+                    </button>
+                    <button type="button" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100" onclick="closeSettingsModal()">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="py-3 px-6 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 border-none bg-gradient-to-r from-blue-500 to-blue-700 text-white hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30">
+                        <i class="fas fa-save"></i>
+                        Salvar Configurações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/dashboard.js"></script>
+</body>
+</html>
+

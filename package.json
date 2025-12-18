@@ -1,0 +1,28 @@
+{
+  "name": "safe-atendimento-frontend",
+  "version": "1.0.0",
+  "description": "Aplicação web frontend para o sistema Safe Atendimento",
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "serve": "python3 -m http.server 8000",
+    "dev": "python3 -m http.server 8000",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luizeri-pg/Safe_Atendimento_Frontend.git"
+  },
+  "keywords": [
+    "safe-atendimento",
+    "frontend",
+    "hospital",
+    "queue-management"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/luizeri-pg/Safe_Atendimento_Frontend/issues"
+  },
+  "homepage": "https://github.com/luizeri-pg/Safe_Atendimento_Frontend#readme"
+}

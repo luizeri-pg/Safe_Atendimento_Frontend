@@ -16,12 +16,14 @@ Thumbs.db
 *.swp
 *.swo
 *~
+*.log
 
 # IDE
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
+.cursor/
 
 # Variáveis de ambiente
 .env
@@ -36,3 +38,9 @@ logs/
 .cache/
 .parcel-cache/
 
+# Servidor local temporário
+.python-http-server/
+
+# Arquivos temporários
+*.tmp
+*.temp
