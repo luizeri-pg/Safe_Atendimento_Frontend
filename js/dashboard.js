@@ -943,8 +943,6 @@ function getSOCUrl(data) {
                 const hojeISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
                 const socUrl = getSOCUrl(hojeISO);
                 
-                console.log('🔍 Buscando pacientes do SOC:', socUrl);
-                
                 const response = await fetch(socUrl);
                 
                 if (!response.ok) {
@@ -952,8 +950,6 @@ function getSOCUrl(data) {
                 }
                 
                 const consultasSOC = await response.json();
-                
-                console.log('✅ Dados recebidos do SOC:', consultasSOC.length, 'registros');
                 
                 // Garantir que é um array
                 if (!Array.isArray(consultasSOC)) {
@@ -993,16 +989,6 @@ function getSOCUrl(data) {
                     // Comparar diretamente (ambas no formato DD/MM/YYYY)
                     return dataCompromisso === hojeFormatadoBR;
                 });
-                
-                console.log(`📅 Data de hoje: ${hojeFormatadoBR}`);
-                console.log(`📊 Total de registros recebidos: ${consultasSOC.length}`);
-                console.log(`✅ Pacientes de hoje filtrados: ${pacientesDoDia.length}`);
-                
-                if (pacientesDoDia.length === 0 && consultasSOC.length > 0) {
-                    // Debug: mostrar quais datas foram retornadas
-                    const datasUnicas = [...new Set(consultasSOC.map(c => c.DATACOMPROMISSO).filter(Boolean))];
-                    console.log(`⚠️ Nenhum paciente de hoje. Datas encontradas:`, datasUnicas.slice(0, 5));
-                }
                 
                 // Armazenar apenas pacientes de hoje para o filtro
                 allPatientsData = pacientesDoDia;
@@ -1070,9 +1056,6 @@ function getSOCUrl(data) {
             const patientsGrid = document.getElementById('patientsGrid');
             const patientsCount = document.getElementById('patientsCount');
             
-            console.log('🎨 Renderizando pacientes:', patients.length);
-            console.log('📍 Elemento patientsGrid existe?', !!patientsGrid);
-            
             if (!patientsGrid) {
                 console.error('❌ Elemento patientsGrid não encontrado!');
                 return;
@@ -1098,8 +1081,6 @@ function getSOCUrl(data) {
                     ? `${showing} paciente${showing !== 1 ? 's' : ''} encontrado${showing !== 1 ? 's' : ''}`
                     : `Mostrando ${showing} de ${total} paciente${total !== 1 ? 's' : ''}`;
             }
-            
-            console.log('✅ Renderizando', patients.length, 'pacientes no grid');
             
             // Formatar e exibir pacientes do SOC (mesma estrutura do index.js)
             patientsGrid.innerHTML = patients.map(consulta => {
