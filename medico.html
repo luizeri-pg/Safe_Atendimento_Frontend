@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Painel do Médico - Safe Atendimento</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+      html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      /* Animated background */
+      .bg-animation {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(45deg, #3b82f6, #1d4ed8, #f093fb, #f5576c);
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
+        opacity: 0.1;
+        z-index: 1;
+      }
+
+      @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      .floating-shapes {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        z-index: 1;
+      }
+
+      .shape {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+        animation: float 20s infinite linear;
+      }
+
+      .shape:nth-child(1) {
+        width: 80px;
+        height: 80px;
+        left: 10%;
+        animation-delay: 0s;
+      }
+
+      .shape:nth-child(2) {
+        width: 120px;
+        height: 120px;
+        left: 20%;
+        animation-delay: 2s;
+      }
+
+      .shape:nth-child(3) {
+        width: 60px;
+        height: 60px;
+        left: 70%;
+        animation-delay: 4s;
+      }
+
+      .shape:nth-child(4) {
+        width: 100px;
+        height: 100px;
+        left: 80%;
+        animation-delay: 6s;
+      }
+
+      @keyframes float {
+        0% {
+          transform: translateY(100vh) rotate(0deg);
+          opacity: 0;
+        }
+        10% {
+          opacity: 1;
+        }
+        90% {
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(-100vh) rotate(360deg);
+          opacity: 0;
+        }
+      }
+      .container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+        position: relative;
+        z-index: 10;
+      }
+
+      .painel {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 24px;
+        padding: 48px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 1200px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+
+      .logo {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        border-radius: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+        box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+      }
+
+      .logo i {
+        font-size: 32px;
+        color: white;
+      }
+      .titulo {
+        color: #3b82f6;
+        font-size: 56px;
+        font-weight: 700;
+        margin-bottom: 36px;
+        text-align: center;
+        letter-spacing: 1px;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      }
+      .medico-info {
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 32px;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      }
+      .medico-nome {
+        font-size: 28px;
+        font-weight: 700;
+        color: #3b82f6;
+        margin-bottom: 8px;
+      }
+      .medico-especialidade {
+        font-size: 20px;
+        color: #666;
+        font-weight: 500;
+      }
+      .paciente-atual {
+        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        color: white;
+        border-radius: 20px;
+        padding: 32px;
+        margin-bottom: 32px;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(76, 175, 80, 0.3);
+        display: none;
+      }
+      .paciente-atual.ativo {
+        display: block;
+      }
+      .paciente-titulo {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 16px;
+        opacity: 0.9;
+      }
+      .paciente-senha {
+        font-size: 48px;
+        font-weight: 900;
+        margin-bottom: 12px;
+        letter-spacing: 2px;
+      }
+      .paciente-nome {
+        font-size: 28px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .paciente-cpf {
+        font-size: 20px;
+        opacity: 0.8;
+      }
+      .fila-espera {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 20px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      }
+      .fila-titulo {
+        font-size: 24px;
+        font-weight: 700;
+        color: #3b82f6;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      .senha-lista {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .senha-item {
+        background: #fff;
+        border-radius: 16px;
+        padding: 20px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 24px;
+        font-weight: 600;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        color: #3b82f6;
+        border-left: 4px solid #1d4ed8;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .senha-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+      }
+      .senha-numero {
+        font-size: 28px;
+        font-weight: 900;
+        color: #3b82f6;
+      }
+      .senha-nome {
+        color: #333;
+        font-size: 20px;
+        font-weight: 500;
+        margin-left: 20px;
+        flex: 1;
+      }
+      .senha-tempo {
+        color: #666;
+        font-size: 16px;
+        font-weight: 400;
+        margin-left: 16px;
+      }
+      .btn-chamar {
+        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        margin-left: 16px;
+        transition: all 0.2s;
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+      }
+      .btn-chamar:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+      }
+      .btn-finalizar {
+        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        margin-left: 16px;
+        transition: all 0.2s;
+        box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+      }
+      .btn-finalizar:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(255, 152, 0, 0.4);
+      }
+      .sem-pacientes {
+        color: #666;
+        font-size: 24px;
+        text-align: center;
+        margin-top: 32px;
+        background: rgba(255, 255, 255, 0.7);
+        padding: 24px;
+        border-radius: 16px;
+        font-weight: 500;
+      }
+      .estatisticas {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      }
+      .estatisticas-titulo {
+        font-size: 20px;
+        font-weight: 700;
+        color: #3b82f6;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+      .estatisticas-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 16px;
+      }
+      .stat-item {
+        text-align: center;
+        padding: 12px;
+        background: rgba(23, 137, 255, 0.1);
+        border-radius: 12px;
+      }
+      .stat-numero {
+        font-size: 32px;
+        font-weight: 900;
+        color: #3b82f6;
+        display: block;
+      }
+      .stat-label {
+        font-size: 14px;
+        color: #666;
+        font-weight: 500;
+        margin-top: 4px;
+      }
+      .controles {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        margin-top: 24px;
+      }
+      .btn-controle {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 16px 32px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 4px 12px rgba(23, 137, 255, 0.3);
+      }
+      .btn-controle:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(23, 137, 255, 0.4);
+      }
+      .btn-controle:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      /* Botão de Encaminhar específico */
+      #btnEncaminharPaciente {
+        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+      }
+
+      #btnEncaminharPaciente:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(255, 152, 0, 0.4);
+      }
+
+      #btnEncaminharPaciente i {
+        margin-right: 8px;
+      }
+
+      /* Top Navigation */
+      .top-nav {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        padding: 16px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      .nav-left {
+        display: flex;
+        align-items: center;
+      }
+
+      .nav-back {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: white;
+        text-decoration: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        transition: background 0.3s ease;
+        font-weight: 500;
+      }
+
+      .nav-back:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .nav-center {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+      }
+
+      .nav-logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .nav-logo i {
+        font-size: 24px;
+      }
+
+      .nav-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .nav-user {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 16px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        font-weight: 500;
+      }
+
+      .user-avatar {
+        width: 32px;
+        height: 32px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .nav-logout {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 8px;
+        transition: background 0.3s ease;
+      }
+
+      .nav-logout:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .titulo {
+        font-size: 32px;
+        font-weight: 800;
+        color: #2d3748;
+        margin-bottom: 8px;
+      }
+
+      .subtitulo {
+        font-size: 16px;
+        color: #718096;
+        font-weight: 500;
+      }
+
+      .refresh-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        font-size: 20px;
+        cursor: pointer;
+        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+        transition: all 0.3s ease;
+        z-index: 100;
+      }
+
+      .refresh-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 32px rgba(102, 126, 234, 0.4);
+      }
+
+      .refresh-btn:active {
+        transform: translateY(0);
+      }
+
+      /* Notification System for Doctor Panel */
+      .notification-toast {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: white;
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        border-left: 4px solid #3b82f6;
+        min-width: 300px;
+        max-width: 400px;
+        transform: translateX(100%);
+        opacity: 0;
+        transition: all 0.3s ease;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .notification-toast.show {
+        transform: translateX(0);
+        opacity: 1;
+      }
+
+      .notification-toast.success {
+        border-left-color: #48bb78;
+      }
+
+      .notification-toast.warning {
+        border-left-color: #ed8936;
+      }
+
+      .notification-toast.error {
+        border-left-color: #e53e3e;
+      }
+
+      .notification-toast-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        color: white;
+      }
+
+      .notification-toast-icon.info {
+        background: #3b82f6;
+      }
+
+      .notification-toast-icon.success {
+        background: #48bb78;
+      }
+
+      .notification-toast-icon.warning {
+        background: #ed8936;
+      }
+
+      .notification-toast-icon.error {
+        background: #e53e3e;
+      }
+
+      .notification-toast-content {
+        flex: 1;
+      }
+
+      .notification-toast-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 4px;
+      }
+
+      .notification-toast-message {
+        font-size: 13px;
+        color: #4a5568;
+        line-height: 1.4;
+      }
+
+      .notification-toast-close {
+        background: none;
+        border: none;
+        color: #a0aec0;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+      }
+
+      .notification-toast-close:hover {
+        background: #f7fafc;
+        color: #4a5568;
+      }
+
+      /* Alert Badge */
+      .alert-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: #e53e3e;
+        color: white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 600;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.2); opacity: 0.7; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+
+
+      .btn-encaminhar {
+        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .btn-encaminhar:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+      }
+
+      /* Modal de Encaminhamento Melhorado */
+      .modal-encaminhamento {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 20px;
+        padding: 0;
+        max-width: 600px;
+        width: 90%;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.3);
+        animation: slideUp 0.3s ease;
+        overflow: hidden;
+      }
+
+      @keyframes slideUp {
+        from { transform: translateY(50px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+
+      .modal-header {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        padding: 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .modal-icon {
+        width: 48px;
+        height: 48px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+      }
+
+      .modal-title h3 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .modal-title p {
+        margin: 4px 0 0 0;
+        font-size: 14px;
+        opacity: 0.9;
+      }
+
+      .modal-close {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 8px;
+        transition: background 0.3s ease;
+        margin-left: auto;
+      }
+
+      .modal-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
+      .modal-body {
+        padding: 24px;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+
+      .form-group label i {
+        color: #3b82f6;
+        width: 16px;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+      }
+
+      .btn-cancelar {
+        background: #f7fafc;
+        color: #4a5568;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-cancelar:hover {
+        background: #edf2f7;
+        border-color: #cbd5e0;
+      }
+
+      .btn-confirmar-encaminhamento {
+        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+      }
+
+      .btn-confirmar-encaminhamento:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(255, 152, 0, 0.4);
+      }
+
+      /* Status de Encaminhamento */
+      .status-encaminhado {
+        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        color: white;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 12px;
+        margin-top: 4px;
+        display: inline-block;
+        box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
+        animation: pulse-encaminhado 2s infinite;
+      }
+
+      @keyframes pulse-encaminhado {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+      }
+
+      /* Ações do Paciente */
+      .acoes-paciente {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 16px;
+        padding: 24px;
+        margin-top: 20px;
+        border: 2px solid #e2e8f0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .acoes-titulo {
+        font-size: 20px;
+        font-weight: 700;
+        color: #3b82f6;
+        margin-bottom: 12px;
+        text-align: center;
+      }
+
+      .acoes-descricao {
+        font-size: 14px;
+        color: #4a5568;
+        line-height: 1.5;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      .botoes-acao {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .btn-encaminhar, .btn-finalizar {
+        padding: 16px 20px;
+        border: none;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .btn-encaminhar {
+        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        color: white;
+      }
+
+      .btn-encaminhar:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(255, 152, 0, 0.4);
+      }
+
+      .btn-finalizar {
+        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        color: white;
+      }
+
+      .btn-finalizar:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+      }
+
+
+      @media (max-width: 768px) {
+        .top-nav {
+          padding: 12px 16px;
+        }
+        
+        .nav-back span {
+          display: none;
+        }
+        
+        .nav-logo span {
+          display: none;
+        }
+        
+        .nav-user span {
+          display: none;
+        }
+        
+        .painel {
+          min-width: 95vw;
+          padding: 24px 16px;
+        }
+        .titulo {
+          font-size: 36px;
+        }
+        .senha-item {
+          flex-direction: column;
+          gap: 12px;
+          text-align: center;
+        }
+        .controles {
+          flex-direction: column;
+        }
+        
+        .botoes-exame {
+          flex-direction: column;
+        }
+        
+        .modal-content {
+          width: 95%;
+          padding: 16px;
+        }
+        
+        .botoes-acao {
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bg-animation"></div>
+    <div class="floating-shapes">
+      <div class="shape"></div>
+      <div class="shape"></div>
+      <div class="shape"></div>
+      <div class="shape"></div>
+    </div>
+
+    <!-- Top Navigation -->
+    <div class="top-nav">
+      <div class="nav-left">
+        <a href="dashboard.html" class="nav-back">
+          <i class="fas fa-arrow-left"></i>
+          <span>Voltar ao Dashboard</span>
+        </a>
+      </div>
+      <div class="nav-center">
+        <div class="nav-logo">
+          <i class="fas fa-user-md"></i>
+          <span>Safe Atendimento</span>
+        </div>
+      </div>
+      <div class="nav-right">
+        <div class="nav-user">
+          <div class="user-avatar">JS</div>
+          <span>Dr. João Silva</span>
+        </div>
+        <button class="nav-logout" onclick="logout()">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="painel">
+        <div class="header">
+          <div class="logo">
+            <i class="fas fa-user-md"></i>
+          </div>
+          <div class="titulo">Painel do Médico</div>
+          <div class="subtitulo">Gerencie sua fila de pacientes e consultas</div>
+        </div>
+      
+      <!-- Informações do Médico -->
+      <div class="medico-info">
+        <div class="medico-nome" id="medicoNome">Dr. [Nome do Médico]</div>
+        <div class="medico-especialidade" id="medicoEspecialidade">Especialidade</div>
+      </div>
+
+      <!-- Paciente Atual -->
+      <div class="paciente-atual" id="pacienteAtual">
+        <div class="paciente-titulo">Paciente em Atendimento</div>
+        <div class="paciente-senha" id="senhaAtual">-</div>
+        <div class="paciente-nome" id="nomeAtual">-</div>
+        <div class="paciente-cpf" id="cpfAtual">-</div>
+        
+        <!-- Ações do Paciente -->
+        <div class="acoes-paciente" id="acoesPaciente" style="display: none;">
+          <div class="acoes-titulo">Ações Disponíveis</div>
+          <div class="acoes-descricao">
+            Escolha o que fazer com o paciente:
+          </div>
+          <div class="botoes-acao">
+            <button class="btn-encaminhar" onclick="mostrarEncaminhamento()">
+              <i class="fas fa-arrow-right"></i> Encaminhar Paciente
+            </button>
+            <button class="btn-finalizar" onclick="finalizarConsulta()">
+              <i class="fas fa-check-circle"></i> Finalizar Atendimento
+            </button>
+          </div>
+        </div>
+        
+        <!-- Modal de Encaminhamento -->
+        <div class="modal-encaminhamento" id="modalEncaminhamento" style="display: none;">
+          <div class="modal-content">
+            <div class="modal-header">
+              <div class="modal-icon">
+                <i class="fas fa-arrow-right"></i>
+              </div>
+              <div class="modal-title">
+                <h3>Encaminhar Paciente</h3>
+                <p>Envie o paciente para outro médico ou especialista</p>
+              </div>
+              <button class="modal-close" onclick="fecharEncaminhamento()">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="form-group">
+                <label for="medicoDestino">
+                  <i class="fas fa-user-md"></i> Médico de Destino
+                </label>
+                <select id="medicoDestino" class="campo-exame" required>
+                  <option value="">Selecione o médico</option>
+                  <option value="Dr. Maria Santos">Dr. Maria Santos</option>
+                  <option value="Dr. João Silva">Dr. João Silva</option>
+                  <option value="Dr. Ana Costa">Dr. Ana Costa</option>
+                  <option value="Dr. Carlos Oliveira">Dr. Carlos Oliveira</option>
+                  <option value="Dr. Patricia Lima">Dr. Patricia Lima</option>
+                  <option value="Dr. Roberto Alves">Dr. Roberto Alves</option>
+                  <option value="Dra. Fernanda Souza">Dra. Fernanda Souza</option>
+                  <option value="Dr. Marcos Pereira">Dr. Marcos Pereira</option>
+                  <option value="Dra. Juliana Rocha">Dra. Juliana Rocha</option>
+                  <option value="Dr. Antonio Ferreira">Dr. Antonio Ferreira</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label for="motivoEncaminhamento">
+                  <i class="fas fa-comment-medical"></i> Motivo do Encaminhamento
+                </label>
+                <textarea id="motivoEncaminhamento" placeholder="Descreva o motivo do encaminhamento e exames necessários..." class="campo-exame textarea"></textarea>
+              </div>
+              
+              <div class="modal-actions">
+                <button class="btn-cancelar" onclick="fecharEncaminhamento()">
+                  <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button class="btn-confirmar-encaminhamento" onclick="confirmarEncaminhamento()">
+                  <i class="fas fa-arrow-right"></i> Encaminhar Paciente
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estatísticas -->
+      <div class="estatisticas">
+        <div class="estatisticas-titulo">Estatísticas do Dia</div>
+        <div class="estatisticas-grid">
+          <div class="stat-item">
+            <span class="stat-numero" id="totalAtendidos">0</span>
+            <div class="stat-label">Atendidos</div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-numero" id="naFila">0</span>
+            <div class="stat-label">Na Fila</div>
+          </div>
+          <div class="stat-item">
+            <span class="stat-numero" id="tempoMedio">0min</span>
+            <div class="stat-label">Tempo Médio</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fila de Espera -->
+      <div class="fila-espera">
+        <div class="fila-titulo">Fila de Espera</div>
+        <div class="senha-lista" id="senhaLista"></div>
+        <div class="sem-pacientes" id="semPacientes" style="display: none">
+          Nenhum paciente na fila no momento.
+        </div>
+      </div>
+
+      <!-- Controles -->
+      <div class="controles">
+        <button class="btn-controle" id="btnChamarProximo" onclick="chamarProximoPaciente()">
+          <i class="fas fa-user-plus"></i> Chamar Próximo
+        </button>
+        <button class="btn-controle" id="btnEncaminharPaciente" onclick="mostrarEncaminhamento()" disabled>
+          <i class="fas fa-arrow-right"></i> Encaminhar
+        </button>
+        <button class="btn-controle" id="btnFinalizarConsulta" onclick="finalizarConsulta()" disabled>
+          <i class="fas fa-check-circle"></i> Finalizar
+        </button>
+        <button class="btn-controle" onclick="atualizarFila()">
+          <i class="fas fa-sync-alt"></i> Atualizar
+        </button>
+      </div>
+      </div>
+    </div>
+
+    <!-- Botão de Refresh -->
+    <button class="refresh-btn" onclick="carregarFila()" title="Atualizar dados">
+      <i class="fas fa-sync-alt"></i>
+    </button>
+
+    <script>
+      const API_URL = "http://safeatendimento-production.up.railway.app/api/senhas";
+      let pacienteAtual = null;
+      let estatisticas = {
+        totalAtendidos: 0,
+        tempoMedio: 0,
+        inicioConsulta: null
+      };
+
+      // Configuração do médico (pode ser personalizada)
+      document.getElementById('medicoNome').textContent = 'Dr. João Silva';
+      document.getElementById('medicoEspecialidade').textContent = 'Clínico Geral';
+
+      async function carregarFila() {
+        try {
+          const res = await fetch(API_URL);
+          const senhas = await res.json();
+          
+          // Filtra apenas senhas pendentes (na fila)
+          const filaPendentes = senhas.filter(s => s.status === 'pendente');
+          
+          const lista = document.getElementById("senhaLista");
+          const semPacientes = document.getElementById("semPacientes");
+          
+          lista.innerHTML = "";
+          
+          if (filaPendentes.length === 0) {
+            semPacientes.style.display = "block";
+          } else {
+            semPacientes.style.display = "none";
+            
+            filaPendentes.forEach((s, index) => {
+              const item = document.createElement("div");
+              item.className = "senha-item";
+              
+              const tempoEspera = calcularTempoEspera(s.data);
+              
+              // Verifica se o paciente foi encaminhado
+              const foiEncaminhado = s.encaminhamento && s.encaminhamento.medicoOrigem;
+              const indicadorEncaminhado = foiEncaminhado ? 
+                `<div class="status-encaminhado">🔄 Encaminhado</div>` : '';
+              
+              item.innerHTML = `
+                <div>
+                  <div class="senha-numero">${s.senha}</div>
+                  <div class="senha-nome">${s.nome || 'Sem nome'}</div>
+                  ${indicadorEncaminhado}
+                </div>
+                <div class="senha-tempo">${tempoEspera}</div>
+                <button class="btn-chamar" onclick="chamarPaciente('${s.senha}')">
+                  Chamar
+                </button>
+              `;
+              
+              lista.appendChild(item);
+            });
+          }
+          
+          // Atualiza estatísticas
+          atualizarEstatisticas(senhas);
+          
+        } catch (e) {
+          console.error("Erro ao carregar fila:", e);
+        }
+      }
+
+      function calcularTempoEspera(dataCriacao) {
+        const agora = new Date();
+        const criacao = new Date(dataCriacao);
+        const diffMs = agora - criacao;
+        const diffMinutos = Math.floor(diffMs / 60000);
+        
+        if (diffMinutos < 1) return 'Agora';
+        if (diffMinutos < 60) return `${diffMinutos}min`;
+        
+        const horas = Math.floor(diffMinutos / 60);
+        const minutos = diffMinutos % 60;
+        return `${horas}h ${minutos}min`;
+      }
+
+      function atualizarEstatisticas(senhas) {
+        const atendidas = senhas.filter(s => s.status === 'atendida').length;
+        const pendentes = senhas.filter(s => s.status === 'pendente').length;
+        
+        document.getElementById('totalAtendidos').textContent = atendidas;
+        document.getElementById('naFila').textContent = pendentes;
+        
+        // Calcula tempo médio (simulado)
+        const tempoMedio = atendidas > 0 ? Math.floor(15 + Math.random() * 10) : 0;
+        document.getElementById('tempoMedio').textContent = `${tempoMedio}min`;
+      }
+
+      async function chamarPaciente(senha) {
+        try {
+          // Busca dados do paciente
+          const res = await fetch(API_URL);
+          const senhas = await res.json();
+          const paciente = senhas.find(s => s.senha === senha);
+          
+          if (paciente) {
+            pacienteAtual = paciente;
+            estatisticas.inicioConsulta = new Date();
+            
+            // Atualiza interface
+            document.getElementById('senhaAtual').textContent = paciente.senha;
+            document.getElementById('nomeAtual').textContent = paciente.nome || 'Sem nome';
+            document.getElementById('cpfAtual').textContent = paciente.cpf || 'Sem CPF';
+            document.getElementById('pacienteAtual').classList.add('ativo');
+            
+            // Habilita botão de finalizar
+            document.getElementById('btnFinalizarConsulta').disabled = false;
+            document.getElementById('btnChamarProximo').disabled = true;
+            
+            // Atualiza fila
+            carregarFila();
+          }
+        } catch (e) {
+          console.error("Erro ao chamar paciente:", e);
+        }
+      }
+
+      async function chamarProximoPaciente() {
+        try {
+          const res = await fetch(API_URL);
+          const senhas = await res.json();
+          const proximo = senhas.find(s => s.status === 'pendente');
+          
+          if (proximo) {
+            await chamarPaciente(proximo.senha);
+          } else {
+            alert('Não há pacientes na fila!');
+          }
+        } catch (e) {
+          console.error("Erro ao chamar próximo paciente:", e);
+        }
+      }
+
+
+      function atualizarFila() {
+        carregarFila();
+      }
+
+      // Notification System for Doctor Panel
+      class DoctorNotificationSystem {
+        constructor() {
+          this.notifications = [];
+          this.init();
+        }
+
+        init() {
+          this.startMonitoring();
+        }
+
+        showNotification(type, title, message, duration = 5000) {
+          const notification = document.createElement('div');
+          notification.className = `notification-toast ${type}`;
+          notification.innerHTML = `
+            <div class="notification-toast-icon ${type}">
+              <i class="fas ${this.getIcon(type)}"></i>
+            </div>
+            <div class="notification-toast-content">
+              <div class="notification-toast-title">${title}</div>
+              <div class="notification-toast-message">${message}</div>
+            </div>
+            <button class="notification-toast-close" onclick="this.parentElement.remove()">
+              <i class="fas fa-times"></i>
+            </button>
+          `;
+
+          document.body.appendChild(notification);
+          
+          // Animate in
+          setTimeout(() => notification.classList.add('show'), 100);
+          
+          // Auto remove
+          setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 300);
+          }, duration);
+        }
+
+        getIcon(type) {
+          const icons = {
+            'info': 'fa-info',
+            'success': 'fa-check',
+            'warning': 'fa-exclamation-triangle',
+            'error': 'fa-times'
+          };
+          return icons[type] || 'fa-info';
+        }
+
+        startMonitoring() {
+          // Monitora mudanças na fila
+          setInterval(() => {
+            this.checkForNewPatients();
+            this.checkForLongWaiting();
+            this.checkForUrgentCases();
+          }, 5000);
+        }
+
+        async checkForNewPatients() {
+          try {
+            const res = await fetch(API_URL);
+            const senhas = await res.json();
+            const pendentes = senhas.filter(s => s.status === 'pendente');
+            
+            if (pendentes.length > 0) {
+              const newPatient = pendentes[0];
+              this.showNotification(
+                'info',
+                'Novo Paciente na Fila',
+                `Senha ${newPatient.senha} - ${newPatient.nome || 'Sem nome'} aguardando`,
+                3000
+              );
+            }
+          } catch (error) {
+            console.error('Erro ao verificar novos pacientes:', error);
+          }
+        }
+
+        checkForLongWaiting() {
+          // Simula verificação de pacientes aguardando há muito tempo
+          const longWaiting = Math.random() > 0.9; // 10% de chance
+          if (longWaiting) {
+            this.showNotification(
+              'warning',
+              'Paciente Aguardando',
+              'Há pacientes aguardando há mais de 30 minutos',
+              4000
+            );
+          }
+        }
+
+        checkForUrgentCases() {
+          // Simula verificação de casos urgentes
+          const urgent = Math.random() > 0.95; // 5% de chance
+          if (urgent) {
+            this.showNotification(
+              'error',
+              'Caso Urgente',
+              'Paciente com prioridade aguardando atendimento',
+              6000
+            );
+          }
+        }
+
+        notifyPatientCalled(senha, nome) {
+          this.showNotification(
+            'success',
+            'Paciente Chamado',
+            `Senha ${senha} - ${nome} foi chamado para atendimento`,
+            3000
+          );
+        }
+
+        notifyConsultationCompleted(senha, nome) {
+          this.showNotification(
+            'success',
+            'Consulta Finalizada',
+            `Atendimento da senha ${senha} - ${nome} foi finalizado`,
+            3000
+          );
+        }
+      }
+
+      // Initialize notification system
+      const doctorNotifications = new DoctorNotificationSystem();
+
+      // Logout function
+      function logout() {
+        if (confirm('Deseja realmente sair do sistema?')) {
+          window.location.href = 'login.html';
+        }
+      }
+
+      // Enhanced functions with notifications
+      async function chamarPaciente(senha) {
+        try {
+          // Busca dados do paciente
+          const res = await fetch(API_URL);
+          const senhas = await res.json();
+          const paciente = senhas.find(s => s.senha === senha);
+          
+          if (paciente) {
+            pacienteAtual = paciente;
+            estatisticas.inicioConsulta = new Date();
+            
+            // Atualiza interface
+            document.getElementById('senhaAtual').textContent = paciente.senha;
+            document.getElementById('nomeAtual').textContent = paciente.nome || 'Sem nome';
+            document.getElementById('cpfAtual').textContent = paciente.cpf || 'Sem CPF';
+            document.getElementById('pacienteAtual').classList.add('ativo');
+            
+            // Habilita botões de controle
+            document.getElementById('btnFinalizarConsulta').disabled = false;
+            document.getElementById('btnEncaminharPaciente').disabled = false;
+            document.getElementById('btnChamarProximo').disabled = true;
+            
+            // Mostra ações do paciente
+            document.getElementById('acoesPaciente').style.display = 'block';
+            
+            // Notifica que o paciente foi chamado
+            doctorNotifications.notifyPatientCalled(paciente.senha, paciente.nome || 'Sem nome');
+            
+            // Atualiza fila
+            carregarFila();
+          }
+        } catch (e) {
+          console.error("Erro ao chamar paciente:", e);
+        }
+      }
+
+      async function finalizarConsulta() {
+        if (!pacienteAtual) return;
+        
+        // Confirmação mais detalhada
+        const confirmacao = confirm(
+          `Finalizar atendimento do paciente ${pacienteAtual.nome} (Senha: ${pacienteAtual.senha})?\n\n` +
+          `⚠️ ATENÇÃO: Após finalizar, o paciente sairá do sistema e não poderá mais ser atendido hoje.\n\n` +
+          `Certifique-se de que:\n` +
+          `• Todos os exames necessários foram realizados\n` +
+          `• O paciente não precisa de outros médicos\n` +
+          `• O atendimento está completo`
+        );
+        
+        if (!confirmacao) return;
+        
+        try {
+          // Marca como atendida
+          await fetch(`${API_URL}/${encodeURIComponent(pacienteAtual.senha)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "atendida" }),
+          });
+          
+          // Calcula tempo de consulta
+          if (estatisticas.inicioConsulta) {
+            const tempoConsulta = Math.floor((new Date() - estatisticas.inicioConsulta) / 60000);
+            console.log(`Consulta finalizada em ${tempoConsulta} minutos`);
+          }
+          
+          // Notifica que a consulta foi finalizada
+          doctorNotifications.notifyConsultationCompleted(pacienteAtual.senha, pacienteAtual.nome || 'Sem nome');
+          
+          // Limpa paciente atual
+          pacienteAtual = null;
+          estatisticas.inicioConsulta = null;
+          
+          // Atualiza interface
+          document.getElementById('pacienteAtual').classList.remove('ativo');
+          document.getElementById('btnFinalizarConsulta').disabled = true;
+          document.getElementById('btnEncaminharPaciente').disabled = true;
+          document.getElementById('btnChamarProximo').disabled = false;
+          
+          // Oculta ações
+          document.getElementById('acoesPaciente').style.display = 'none';
+          
+          // Atualiza fila
+          carregarFila();
+          
+        } catch (e) {
+          console.error("Erro ao finalizar consulta:", e);
+        }
+      }
+
+      // Funções para gerenciar exames e encaminhamentos
+      async function carregarHistoricoExames(senha) {
+        try {
+          const res = await fetch(`${API_URL.replace('/senhas', '')}/exames/${senha}`);
+          const exames = await res.json();
+          
+          const examesLista = document.getElementById('examesLista');
+          examesLista.innerHTML = '';
+          
+          if (exames.length === 0) {
+            examesLista.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Nenhum exame registrado ainda.</div>';
+            return;
+          }
+          
+          exames.forEach(exame => {
+            const exameItem = document.createElement('div');
+            exameItem.className = 'exame-item';
+            
+            const dataFormatada = new Date(exame.data).toLocaleString('pt-BR');
+            
+            exameItem.innerHTML = `
+              <div class="exame-tipo">${exame.tipoExame}</div>
+              <div class="exame-info">
+                <span class="exame-medico">Dr(a). ${exame.medico} - ${exame.especialidade}</span>
+                <span class="exame-data">${dataFormatada}</span>
+              </div>
+              ${exame.resultado ? `<div class="exame-resultado"><strong>Resultado:</strong> ${exame.resultado}</div>` : ''}
+              ${exame.observacoes ? `<div class="exame-observacoes">${exame.observacoes}</div>` : ''}
+            `;
+            
+            examesLista.appendChild(exameItem);
+          });
+        } catch (e) {
+          console.error("Erro ao carregar histórico de exames:", e);
+        }
+      }
+
+      async function registrarExame() {
+        if (!pacienteAtual) return;
+        
+        const tipoExame = document.getElementById('tipoExame').value;
+        const resultado = document.getElementById('resultadoExame').value;
+        const observacoes = document.getElementById('observacoesExame').value;
+        
+        if (!tipoExame) {
+          alert('Por favor, informe o tipo de exame.');
+          return;
+        }
+        
+        try {
+          const medicoNome = document.getElementById('medicoNome').textContent;
+          const especialidade = document.getElementById('medicoEspecialidade').textContent;
+          
+          const res = await fetch(`${API_URL.replace('/senhas', '')}/exames`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              senha: pacienteAtual.senha,
+              medico: medicoNome,
+              especialidade: especialidade,
+              tipoExame: tipoExame,
+              resultado: resultado,
+              observacoes: observacoes
+            })
+          });
+          
+          if (res.ok) {
+            // Limpa formulário
+            document.getElementById('tipoExame').value = '';
+            document.getElementById('resultadoExame').value = '';
+            document.getElementById('observacoesExame').value = '';
+            
+            // Atualiza histórico
+            await carregarHistoricoExames(pacienteAtual.senha);
+            
+            // Notifica sucesso
+            doctorNotifications.showNotification(
+              'success',
+              'Exame Registrado',
+              `Exame ${tipoExame} registrado com sucesso para ${pacienteAtual.nome}`,
+              3000
+            );
+          } else {
+            throw new Error('Erro ao registrar exame');
+          }
+        } catch (e) {
+          console.error("Erro ao registrar exame:", e);
+          alert('Erro ao registrar exame. Tente novamente.');
+        }
+      }
+
+      function mostrarEncaminhamento() {
+        document.getElementById('modalEncaminhamento').style.display = 'flex';
+      }
+
+      function fecharEncaminhamento() {
+        document.getElementById('modalEncaminhamento').style.display = 'none';
+        // Limpa campos
+        document.getElementById('medicoDestino').value = '';
+        document.getElementById('motivoEncaminhamento').value = '';
+      }
+
+      async function confirmarEncaminhamento() {
+        if (!pacienteAtual) return;
+        
+        const medicoDestino = document.getElementById('medicoDestino').value;
+        const motivo = document.getElementById('motivoEncaminhamento').value;
+        
+        if (!medicoDestino) {
+          alert('Por favor, informe o médico de destino.');
+          return;
+        }
+        
+        try {
+          const medicoOrigem = document.getElementById('medicoNome').textContent;
+          
+          console.log('Dados do encaminhamento:', {
+            senha: pacienteAtual.senha,
+            medicoOrigem: medicoOrigem,
+            medicoDestino: medicoDestino,
+            motivo: motivo
+          });
+          
+          const res = await fetch(`http://safeatendimento-production.up.railway.app/api/encaminhamento`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              senha: pacienteAtual.senha,
+              medicoOrigem: medicoOrigem,
+              medicoDestino: medicoDestino,
+              motivo: motivo
+            })
+          });
+          
+          console.log('Resposta do servidor:', res.status, res.statusText);
+          
+          if (res.ok) {
+            // Fecha modal
+            fecharEncaminhamento();
+            
+            // Notifica sucesso
+            doctorNotifications.showNotification(
+              'info',
+              'Paciente Encaminhado',
+              `${pacienteAtual.nome} foi encaminhado para ${medicoDestino}`,
+              4000
+            );
+            
+            // Limpa paciente atual para voltar ao painel
+            pacienteAtual = null;
+            estatisticas.inicioConsulta = null;
+            
+            // Atualiza interface - volta para o painel
+            document.getElementById('pacienteAtual').classList.remove('ativo');
+            document.getElementById('btnFinalizarConsulta').disabled = true;
+            document.getElementById('btnEncaminharPaciente').disabled = true;
+            document.getElementById('btnChamarProximo').disabled = false;
+            
+            // Oculta ações
+            document.getElementById('acoesPaciente').style.display = 'none';
+            
+            // Atualiza fila para que o paciente apareça novamente na fila com status "Encaminhado"
+            carregarFila();
+          } else {
+            throw new Error('Erro ao encaminhar paciente');
+          }
+        } catch (e) {
+          console.error("Erro ao encaminhar paciente:", e);
+          alert(`Erro ao encaminhar paciente: ${e.message}. Verifique o console para mais detalhes.`);
+        }
+      }
+
+      // Atualização automática a cada 3 segundos
+      setInterval(carregarFila, 3000);
+      
+      // Carrega dados iniciais
+      carregarFila();
+    </script>
+  </body>
+</html>
+

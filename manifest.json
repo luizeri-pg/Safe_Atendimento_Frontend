@@ -1,0 +1,9 @@
+{
+  "short_name": "SafeTotem",
+  "name": "SafeTotem",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#00acd4",
+  "background_color": "#ffffff"
+}
