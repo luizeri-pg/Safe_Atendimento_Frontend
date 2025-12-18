@@ -47,20 +47,75 @@ document.addEventListener('DOMContentLoaded', () => {
       showLoading(true);
       hideMessages();
 
-      // Simulate API call
-      setTimeout(() => {
-        if (validateCredentials(email, password, selectedRole)) {
-          // Salvar informações do usuário logado no localStorage
-          localStorage.setItem('loggedUser', JSON.stringify({ email, role: selectedRole }));
+      // Chamada real à API
+      try {
+        const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
+          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
+            ? 'http://localhost:3000/api'
+            : 'https://safeatendimento-production.up.railway.app/api');
+        
+        // Tentar endpoint de login primeiro
+        let loginUrl = `${API_BASE_URL}/usuarios/login`;
+        let response = await fetch(loginUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, role: selectedRole })
+        });
+
+        // Se não existir endpoint de login, buscar usuário na lista
+        if (!response.ok && response.status === 404) {
+          const usuariosUrl = `${API_BASE_URL}/usuarios`;
+          const usuariosResponse = await fetch(usuariosUrl);
+          
+          if (usuariosResponse.ok) {
+            const usuarios = await usuariosResponse.json();
+            const usuario = usuarios.find(u => 
+              u.email === email && 
+              u.senha === password && 
+              (u.role === selectedRole || u.tipo === selectedRole || u.funcao === selectedRole)
+            );
+            
+            if (usuario) {
+              // Salvar informações do usuário logado no localStorage
+              localStorage.setItem('loggedUser', JSON.stringify({ 
+                email, 
+                role: selectedRole,
+                nome: usuario.nome || usuario.name,
+                id: usuario.id
+              }));
+              showSuccess('Login realizado com sucesso!');
+              setTimeout(() => {
+                redirectToDashboard(selectedRole);
+              }, 1000);
+              showLoading(false);
+              return;
+            }
+          }
+        }
+
+        // Se endpoint de login existir e retornar sucesso
+        if (response.ok) {
+          const userData = await response.json();
+          localStorage.setItem('loggedUser', JSON.stringify({ 
+            email, 
+            role: selectedRole,
+            nome: userData.nome || userData.name,
+            id: userData.id
+          }));
           showSuccess('Login realizado com sucesso!');
           setTimeout(() => {
             redirectToDashboard(selectedRole);
           }, 1000);
         } else {
-          showError('Credenciais inválidas');
+          const errorData = await response.json().catch(() => ({}));
+          showError(errorData.message || 'Credenciais inválidas');
         }
+      } catch (error) {
+        console.error('Erro ao fazer login:', error);
+        showError('Erro ao conectar com o servidor. Verifique sua conexão.');
+      } finally {
         showLoading(false);
-      }, 1500);
+      }
     });
   }
 
@@ -76,17 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function validateCredentials(email, password, role) {
-  const validCredentials = {
-    'medico@safe.com': { password: 'senha123', role: 'medico' },
-    'medico2@safe.com': { password: 'senha123', role: 'medico' },
-    'atendente@safe.com': { password: 'senha123', role: 'atendente' }
-  };
-
-  return validCredentials[email] && 
-         validCredentials[email].password === password && 
-         validCredentials[email].role === role;
-}
+// Função removida - agora usa API real
 
 function redirectToDashboard(role) {
   // Sempre redirecionar para o dashboard principal primeiro
