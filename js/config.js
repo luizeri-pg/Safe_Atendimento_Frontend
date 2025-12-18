@@ -32,10 +32,5 @@
         USUARIOS_URL: `${API_BASE_URL}/usuarios`
     };
     
-    // Log para debug
-    console.log('🚀 API Config carregada:', {
-        hostname: window.location.hostname,
-        isLocalhost: isLocalhost,
-        baseURL: API_BASE_URL
-    });
+    // Log removido em produção - usar console.error para debug se necessário
 })();

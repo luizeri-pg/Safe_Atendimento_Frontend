@@ -14,7 +14,6 @@
       }
       
       const API_URL = getAPIUrl();
-      console.log('🔧 API_URL configurada:', API_URL);
       
       function formatarData(dataStr) {
         const d = new Date(dataStr);

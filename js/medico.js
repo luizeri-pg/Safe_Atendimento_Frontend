@@ -2,7 +2,6 @@
       function getAPIUrl() {
         // Se config já está disponível, usar ela
         if (window.API_CONFIG && window.API_CONFIG.SENHAS_URL) {
-          console.log('✅ Usando API_CONFIG.SENHAS_URL:', window.API_CONFIG.SENHAS_URL);
           return window.API_CONFIG.SENHAS_URL;
         }
         // Fallback: detectar localhost manualmente
@@ -16,12 +15,10 @@
           ? 'http://localhost:3000/api/senhas'
           : 'https://safeatendimento-production.up.railway.app/api/senhas';
         
-        console.log('🔧 Detecção manual - hostname:', hostname, '| isLocalhost:', isLocalhost, '| URL:', url);
         return url;
       }
       
       const API_URL = getAPIUrl();
-      console.log('🔧 API_URL final configurada:', API_URL);
       let pacienteAtual = null;
       let estatisticas = {
         totalAtendidos: 0,
@@ -61,26 +58,12 @@
         try {
           // Usar função getAPIUrl para garantir URL correta a cada chamada
           const url = getAPIUrl();
-          console.log('📡 Carregando fila da URL:', url);
           const res = await fetch(url);
           const senhas = await res.json();
           
           // Obter médico atual logado
           const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
           const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-          
-          console.log('👨‍⚕️ Médico atual:', medicoAtualNome);
-          console.log('📋 Total de senhas recebidas:', senhas.length);
-          
-          // DEBUG: Mostrar dados completos de cada senha
-          senhas.forEach(s => {
-            console.log(`📄 Senha ${s.senha}:`, {
-              status: s.status,
-              medicoAtendendo: s.medicoAtendendo || 'NÃO TEM',
-              medicoAtendendoEmail: s.medicoAtendendoEmail || 'NÃO TEM',
-              encaminhamento: s.encaminhamento || 'NÃO TEM'
-            });
-          });
           
           // Filtra senhas pendentes E que foram encaminhadas para este médico OU não foram encaminhadas
           const filaPendentes = senhas.filter(s => {
@@ -100,12 +83,10 @@
             
             if (matchMarcador) {
               const medicoDoMarcador = matchMarcador[1];
-              console.log(`🔍 Paciente ${s.senha} tem marcador no nome: "${medicoDoMarcador}"`);
               
               // Se não tem no backend, usar do marcador no nome
               if (!medicoAtendendo || medicoAtendendo.trim() === '') {
                 medicoAtendendo = medicoDoMarcador;
-                console.log(`✅ Usando médico do marcador no nome: ${medicoAtendendo}`);
               }
             }
             
@@ -124,18 +105,10 @@
                 if (diferencaMinutos < 30) {
                   medicoAtendendo = dados.medico;
                   medicoAtendendoEmail = dados.email;
-                  console.log(`📦 Paciente ${s.senha} encontrado no localStorage (${Math.round(diferencaMinutos)}min atrás):`, dados);
                 }
               } catch (e) {
                 console.warn('❌ Erro ao ler localStorage:', e);
               }
-            }
-            
-            console.log(`🔍 Verificando paciente ${s.senha} - medicoAtendendo: "${medicoAtendendo || 'NÃO TEM'}" | Médico atual: "${medicoAtualNome}"`);
-            
-            // DEBUG: Log para verificar dados do paciente
-            if (medicoAtendendo) {
-              console.log(`🔍 Paciente ${s.senha} - medicoAtendendo: "${medicoAtendendo}" | Médico atual: "${medicoAtualNome}"`);
             }
             
             // Se o paciente está sendo atendido por outro médico, NÃO mostrar
@@ -151,12 +124,10 @@
               
               // Se NÃO é o médico atual (nem por nome nem por email), NÃO mostrar
               if (!mesmoMedicoPorNome && !mesmoMedicoPorEmail) {
-                console.log(`❌ Paciente ${s.senha} filtrado: está sendo atendido por ${medicoAtendendoTrim}`);
                 return false; // Está sendo atendido por outro médico
               }
               
               // Se é o médico atual, não mostrar na fila (já está no card de atendimento)
-              console.log(`✅ Paciente ${s.senha} é do médico atual, mas não aparece na fila (está em atendimento)`);
               return false;
             }
             
@@ -170,22 +141,15 @@
               
               // Se foi encaminhado para este médico, mostrar (mesmo que não aceito ainda)
               if (encaminhadoParaEste) {
-                // Verificar se já foi aceito
-                const aceito = s.encaminhamento.aceito === true;
-                console.log(`✅ Paciente ${s.senha} encaminhado para este médico (aceito: ${aceito})`);
                 return true; // Mostrar na fila (para aceitar se não aceito, ou chamar se aceito)
               }
               // Se foi encaminhado para outro médico, não mostrar
-              console.log(`❌ Paciente ${s.senha} encaminhado para outro médico: ${medicoDestino}`);
               return false;
             }
             
             // Se não tem encaminhamento e não está sendo atendido por ninguém, mostrar (paciente novo)
-            console.log(`✅ Paciente ${s.senha} disponível (novo paciente)`);
             return true;
           });
-          
-          console.log(`📊 Fila filtrada: ${filaPendentes.length} pacientes disponíveis`);
           
           const lista = document.getElementById("senhaLista");
           const semPacientes = document.getElementById("semPacientes");
@@ -423,12 +387,6 @@
                 data: timestampAtual
               };
               
-              console.log('💾 Salvando no backend:', {
-                senha: senha,
-                dados: dadosParaSalvar,
-                url: `${url}/${encodeURIComponent(senha)}`
-              });
-              
               const response = await fetch(`${url}/${encodeURIComponent(senha)}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -442,7 +400,6 @@
               }
               
               const dadosSalvos = await response.json();
-              console.log('✅ Resposta do PATCH:', dadosSalvos);
               
               // Salvar no localStorage com timestamp para controle local
               const chaveMedicoAtendendo = `medicoAtendendo_${senha}`;
@@ -453,8 +410,6 @@
                 senha: senha
               };
               localStorage.setItem(chaveMedicoAtendendo, JSON.stringify(dadosLocalStorage));
-              
-              console.log('💾 Dados salvos no localStorage:', chaveMedicoAtendendo, dadosLocalStorage);
               
               // Também salvar em um registro global de pacientes em atendimento
               const chaveGlobal = 'pacientesEmAtendimento';
@@ -470,7 +425,6 @@
               
               pacientesGlobal[senha] = dadosLocalStorage;
               localStorage.setItem(chaveGlobal, JSON.stringify(pacientesGlobal));
-              console.log('💾 Atualizado registro global de pacientes em atendimento');
               
               // Atualizar dados locais (usar nome original para exibição local)
               paciente.medicoAtendendo = medicoAtualNome;
@@ -549,7 +503,7 @@
           // Calcula tempo de consulta
           if (estatisticas.inicioConsulta) {
             const tempoConsulta = Math.floor((new Date() - estatisticas.inicioConsulta) / 60000);
-            console.log(`Consulta finalizada em ${tempoConsulta} minutos`);
+            // Tempo de consulta calculado (pode ser usado para estatísticas futuras)
           }
           
           // Remover marcador do nome no backend e limpar localStorage
@@ -577,7 +531,6 @@
             
             const chaveMedicoAtendendo = `medicoAtendendo_${pacienteAtual.senha}`;
             localStorage.removeItem(chaveMedicoAtendendo);
-            console.log('🗑️ Removido do localStorage:', chaveMedicoAtendendo);
           }
           
           // Limpa paciente atual
@@ -714,7 +667,6 @@
               usuariosURL = `${baseURL}/usuarios`;
             }
             
-            console.log('🔍 Buscando médicos ativos em:', usuariosURL);
             const res = await fetch(usuariosURL);
             
             if (res.ok) {
@@ -727,7 +679,6 @@
                 return isMedico && isAtivo;
               });
               
-              console.log('✅ Médicos carregados da API:', medicosAtivos.length);
             } else {
               throw new Error(`HTTP error! status: ${res.status}`);
             }
@@ -839,14 +790,6 @@
         try {
           const medicoOrigem = document.getElementById('medicoNome').textContent;
           
-          console.log('Dados do encaminhamento:', {
-            senha: pacienteAtual.senha,
-            medicoOrigem: medicoOrigem,
-            medicoDestino: medicoDestino,
-            salaDestino: salaDestino,
-            motivo: motivo
-          });
-          
           // Preparar dados do encaminhamento
           const encaminhamentoData = {
             medicoOrigem: medicoOrigem,
@@ -878,7 +821,6 @@
             
             if (res.ok) {
               encaminhamentoSalvo = true;
-              console.log('✅ Encaminhamento salvo no backend');
             }
           } catch (apiError) {
             console.warn('⚠️ Endpoint de encaminhamento não disponível, salvando apenas localmente:', apiError);
@@ -899,7 +841,7 @@
             });
             
             if (res.ok) {
-              console.log('✅ Dados de encaminhamento adicionados à senha do paciente');
+              // Dados de encaminhamento adicionados com sucesso
             }
           } catch (patchError) {
             console.warn('⚠️ Erro ao atualizar senha do paciente:', patchError);
@@ -943,7 +885,6 @@
             
             const chaveMedicoAtendendo = `medicoAtendendo_${pacienteAtual.senha}`;
             localStorage.removeItem(chaveMedicoAtendendo);
-            console.log('🗑️ Removido do localStorage (encaminhado):', chaveMedicoAtendendo);
           }
           
           // Limpa paciente atual para voltar ao painel
@@ -1019,7 +960,7 @@
             }),
           });
           
-          console.log('✅ Encaminhamento aceito');
+          // Encaminhamento aceito com sucesso
           
           // Recarregar fila
           carregarFila();

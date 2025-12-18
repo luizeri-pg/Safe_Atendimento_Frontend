@@ -14,7 +14,6 @@
       }
       
       const API_URL = getAPIUrl();
-      console.log('🔧 API_URL configurada:', API_URL);
       
       // Verificar se há encaminhamento para exibir
       function verificarEncaminhamento() {

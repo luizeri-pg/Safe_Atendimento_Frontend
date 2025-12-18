@@ -14,18 +14,14 @@
       }
       
       const API_URL = getAPIUrl();
-      console.log('🔧 API_URL configurada:', API_URL);
       
       let senhaParaCadastro = null;
       let senhaParaEditar = null;
 
       async function carregarSenhas() {
         try {
-          console.log("Carregando senhas do endpoint:", API_URL);
           const res = await fetch(API_URL);
-          console.log("Resposta do servidor:", res.status, res.statusText);
           const senhas = await res.json();
-          console.log("Senhas recebidas:", senhas);
           const lista = document.getElementById("senhaLista");
           const semSenhas = document.getElementById("semSenhas");
           lista.innerHTML = "";
@@ -33,11 +29,9 @@
           if (senhas.length === 0) {
             semSenhas.classList.remove("hidden");
             semSenhas.classList.add("block");
-            console.log("Nenhuma senha encontrada");
           } else {
             semSenhas.classList.add("hidden");
             semSenhas.classList.remove("block");
-            console.log("Exibindo", senhas.length, "senhas");
             
             senhas.forEach((s) => {
               const item = document.createElement("div");

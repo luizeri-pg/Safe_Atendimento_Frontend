@@ -625,13 +625,11 @@ function getSOCUrl(data) {
             // Apply notification settings
             if (settings.notifications.sound) {
                 // Enable sound notifications
-                console.log('Sound notifications enabled');
             }
 
             // Apply language settings
             if (settings.display.language !== 'pt-BR') {
                 // In a real app, this would change the language
-                console.log('Language changed to:', settings.display.language);
             }
         }
 
@@ -822,7 +820,6 @@ function getSOCUrl(data) {
             
             // Se o dia mudou (meia-noite passou), atualizar dados
             if (today !== currentDate) {
-                console.log('🔄 Novo dia detectado! Atualizando dados automaticamente...');
                 currentDate = today;
                 
                 // Limpar dados antigos de pacientes
@@ -831,10 +828,8 @@ function getSOCUrl(data) {
                 // Recarregar dados da seção ativa
                 const activeSection = document.querySelector('.section-content.active');
                 if (activeSection && activeSection.id === 'patientsSection') {
-                    console.log('📋 Recarregando pacientes para o novo dia...');
                     loadPatientsFromSOC();
                 } else if (activeSection && activeSection.id === 'dashboardSection') {
-                    console.log('📊 Recarregando dashboard para o novo dia...');
                     loadDashboardData();
                     loadRecentActivity();
                 }
@@ -849,12 +844,8 @@ function getSOCUrl(data) {
             
             const msUntilMidnight = midnight.getTime() - now.getTime();
             
-            console.log(`⏰ Próxima atualização automática agendada para meia-noite (em ${Math.round(msUntilMidnight / 1000 / 60)} minutos)`);
-            
             // Agendar atualização na meia-noite
             setTimeout(() => {
-                console.log('🕛 Meia-noite! Atualizando dados automaticamente...');
-                
                 // Atualizar data atual
                 currentDate = new Date().toDateString();
                 
@@ -893,7 +884,6 @@ function getSOCUrl(data) {
                 // Mesma lógica do index.js: buscar SOC com data de hoje
                 const hojeISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
                 const socUrl = getSOCUrl(hojeISO);
-                console.log('Buscando pacientes do SOC na URL:', socUrl);
                 
                 const response = await fetch(socUrl);
                 
@@ -916,9 +906,6 @@ function getSOCUrl(data) {
                 const ano = hoje.getFullYear();
                 const hojeFormatadoBR = `${dia}/${mes}/${ano}`;
                 
-                console.log('🔍 Filtrando pacientes para a data:', hojeFormatadoBR);
-                console.log('📊 Total de pacientes retornados pela API:', consultasSOC.length);
-                
                 // Filtrar pacientes que têm DATACOMPROMISSO igual a hoje
                 const pacientesDoDia = consultasSOC.filter(consulta => {
                     if (!consulta.DATACOMPROMISSO) {
@@ -936,8 +923,6 @@ function getSOCUrl(data) {
                     // Se a data não corresponde, retornar false
                     return false;
                 });
-                
-                console.log('✅ Pacientes filtrados para hoje:', pacientesDoDia.length);
                 
                 // Armazenar apenas pacientes do dia para o filtro
                 allPatientsData = pacientesDoDia;

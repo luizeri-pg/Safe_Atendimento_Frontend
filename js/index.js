@@ -222,11 +222,6 @@ async function confirmarCadastro() {
 async function confirmarAtendimento() {
   // Usa o código do funcionário do SOC como senha
   senha = paciente.CODIGOFUNCIONARIO || "N/A";
-  console.log("Enviando para backend:", {
-    senha,
-    nome: paciente.NOMEFUNCIONARIO,
-    cpf: paciente.CPFFUNCIONARIO,
-  });
 
   try {
     await fetch(`${API_BASE_URL}/senhas`, {
