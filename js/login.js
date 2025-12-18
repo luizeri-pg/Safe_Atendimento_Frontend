@@ -11,6 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Auto-fill demo credentials
+  // NOTA: Estes são apenas valores de exemplo para facilitar desenvolvimento/testes.
+  // A autenticação real é feita via API (ver função de submit do formulário).
   const emailInput = document.getElementById('email');
   if (emailInput) {
     emailInput.addEventListener('focus', () => {
