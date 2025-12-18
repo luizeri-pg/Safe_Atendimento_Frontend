@@ -122,22 +122,51 @@ function getSOCUrl(data) {
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
             submitBtn.disabled = true;
 
-            // Simulate API call
-            setTimeout(() => {
-                // Save to localStorage (in real app, this would be an API call)
-                localStorage.setItem('userProfile', JSON.stringify(formData));
-                
-                // Update UI
-                updateUserDisplay(formData);
-                
-                // Close modal
-                closeProfileModal();
-                
-                // Reset button
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-                
-            }, 1500);
+            // Chamada real à API
+            (async () => {
+                try {
+                    const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
+                        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
+                            ? 'http://localhost:3000/api'
+                            : 'https://safeatendimento-production.up.railway.app/api');
+                    
+                    const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+                    const userId = loggedUser.id || loggedUser.email;
+                    
+                    // Tentar atualizar perfil via API
+                    const response = await fetch(`${API_BASE_URL}/usuarios/${encodeURIComponent(userId)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    if (response.ok) {
+                        // Salvar também no localStorage como fallback
+                        localStorage.setItem('userProfile', JSON.stringify(formData));
+                        
+                        // Update UI
+                        updateUserDisplay(formData);
+                        
+                        // Close modal
+                        closeProfileModal();
+                    } else {
+                        // Se não conseguir salvar na API, salvar apenas localmente
+                        localStorage.setItem('userProfile', JSON.stringify(formData));
+                        updateUserDisplay(formData);
+                        closeProfileModal();
+                    }
+                } catch (error) {
+                    console.error('Erro ao salvar perfil:', error);
+                    // Fallback: salvar apenas localmente
+                    localStorage.setItem('userProfile', JSON.stringify(formData));
+                    updateUserDisplay(formData);
+                    closeProfileModal();
+                } finally {
+                    // Reset button
+                    submitBtn.innerHTML = originalText;
+                    submitBtn.disabled = false;
+                }
+            })();
         }
 
         function validateProfileForm(data) {
@@ -402,26 +431,54 @@ function getSOCUrl(data) {
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Alterando...';
             submitBtn.disabled = true;
 
-            // Simulate API call
-            setTimeout(() => {
-                // In real app, this would be an API call to change password
-                // For demo, we'll just save to localStorage
-                const passwordData = {
-                    currentPassword: currentPassword,
-                    newPassword: newPassword,
-                    changedAt: new Date().toISOString()
-                };
-                
-                localStorage.setItem('passwordChange', JSON.stringify(passwordData));
-                
-                // Close modal
-                closePasswordModal();
-                
-                // Reset button
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-                
-            }, 2000);
+            // Chamada real à API
+            (async () => {
+                try {
+                    const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
+                        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
+                            ? 'http://localhost:3000/api'
+                            : 'https://safeatendimento-production.up.railway.app/api');
+                    
+                    const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+                    const userId = loggedUser.id || loggedUser.email;
+                    
+                    // Tentar alterar senha via API
+                    const response = await fetch(`${API_BASE_URL}/usuarios/${encodeURIComponent(userId)}/senha`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            currentPassword: currentPassword,
+                            newPassword: newPassword
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        // Salvar também no localStorage como fallback
+                        const passwordData = {
+                            currentPassword: currentPassword,
+                            newPassword: newPassword,
+                            changedAt: new Date().toISOString()
+                        };
+                        localStorage.setItem('passwordChange', JSON.stringify(passwordData));
+                        
+                        // Close modal
+                        closePasswordModal();
+                    } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        showFieldError('currentPassword', errorData.message || 'Erro ao alterar senha');
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Erro ao alterar senha:', error);
+                    showFieldError('currentPassword', 'Erro ao conectar com o servidor');
+                } finally {
+                    // Reset button
+                    submitBtn.innerHTML = originalText;
+                    submitBtn.disabled = false;
+                }
+            })();
         }
 
         function validatePasswordForm(current, newPass, confirm) {
@@ -437,10 +494,8 @@ function getSOCUrl(data) {
             if (!current.trim()) {
                 showFieldError('currentPassword', 'Senha atual é obrigatória');
                 isValid = false;
-            } else if (current !== 'senha123') { // In real app, this would be validated against API
-                showFieldError('currentPassword', 'Senha atual incorreta');
-                isValid = false;
             }
+            // Validação da senha atual será feita pela API
             
             // Validate new password
             if (!newPass.trim()) {
@@ -586,22 +641,18 @@ function getSOCUrl(data) {
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
             submitBtn.disabled = true;
 
-            // Simulate API call
-            setTimeout(() => {
-                // Save to localStorage
-                localStorage.setItem('userSettings', JSON.stringify(settingsData));
-                
-                // Apply settings
-                applySettings(settingsData);
-                
-                // Close modal
-                closeSettingsModal();
-                
-                // Reset button
-                submitBtn.innerHTML = originalText;
-                submitBtn.disabled = false;
-                
-            }, 1500);
+            // Salvar configurações (localStorage é apropriado para preferências do usuário)
+            localStorage.setItem('userSettings', JSON.stringify(settingsData));
+            
+            // Apply settings
+            applySettings(settingsData);
+            
+            // Close modal
+            closeSettingsModal();
+            
+            // Reset button
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
         }
 
         function applySettings(settings) {
@@ -892,8 +943,6 @@ function getSOCUrl(data) {
                 const hojeISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
                 const socUrl = getSOCUrl(hojeISO);
                 
-                console.log('🔍 Buscando pacientes do SOC:', socUrl);
-                
                 const response = await fetch(socUrl);
                 
                 if (!response.ok) {
@@ -901,8 +950,6 @@ function getSOCUrl(data) {
                 }
                 
                 const consultasSOC = await response.json();
-                
-                console.log('✅ Dados recebidos do SOC:', consultasSOC.length, 'registros');
                 
                 // Garantir que é um array
                 if (!Array.isArray(consultasSOC)) {
@@ -942,16 +989,6 @@ function getSOCUrl(data) {
                     // Comparar diretamente (ambas no formato DD/MM/YYYY)
                     return dataCompromisso === hojeFormatadoBR;
                 });
-                
-                console.log(`📅 Data de hoje: ${hojeFormatadoBR}`);
-                console.log(`📊 Total de registros recebidos: ${consultasSOC.length}`);
-                console.log(`✅ Pacientes de hoje filtrados: ${pacientesDoDia.length}`);
-                
-                if (pacientesDoDia.length === 0 && consultasSOC.length > 0) {
-                    // Debug: mostrar quais datas foram retornadas
-                    const datasUnicas = [...new Set(consultasSOC.map(c => c.DATACOMPROMISSO).filter(Boolean))];
-                    console.log(`⚠️ Nenhum paciente de hoje. Datas encontradas:`, datasUnicas.slice(0, 5));
-                }
                 
                 // Armazenar apenas pacientes de hoje para o filtro
                 allPatientsData = pacientesDoDia;
@@ -1019,9 +1056,6 @@ function getSOCUrl(data) {
             const patientsGrid = document.getElementById('patientsGrid');
             const patientsCount = document.getElementById('patientsCount');
             
-            console.log('🎨 Renderizando pacientes:', patients.length);
-            console.log('📍 Elemento patientsGrid existe?', !!patientsGrid);
-            
             if (!patientsGrid) {
                 console.error('❌ Elemento patientsGrid não encontrado!');
                 return;
@@ -1047,8 +1081,6 @@ function getSOCUrl(data) {
                     ? `${showing} paciente${showing !== 1 ? 's' : ''} encontrado${showing !== 1 ? 's' : ''}`
                     : `Mostrando ${showing} de ${total} paciente${total !== 1 ? 's' : ''}`;
             }
-            
-            console.log('✅ Renderizando', patients.length, 'pacientes no grid');
             
             // Formatar e exibir pacientes do SOC (mesma estrutura do index.js)
             patientsGrid.innerHTML = patients.map(consulta => {
@@ -1381,21 +1413,76 @@ function getSOCUrl(data) {
             
             const reportName = reportTypes[type] || 'Relatório';
             
-            // Simula geração de relatório
-            setTimeout(() => {
-                // Simula download do relatório
-                const link = document.createElement('a');
-                link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(
-                    `=== ${reportName} ===\n` +
-                    `Data: ${new Date().toLocaleDateString('pt-BR')}\n` +
-                    `Gerado por: Dr. João Silva\n` +
-                    `Tipo: ${type}\n\n` +
-                    `Este é um relatório de demonstração.\n` +
-                    `Em produção, aqui estariam os dados reais.`
-                );
-                link.download = `${reportName.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
-                link.click();
-            }, 2000);
+            // Gerar relatório com dados reais da API
+            (async () => {
+                try {
+                    const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
+                        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
+                            ? 'http://localhost:3000/api'
+                            : 'https://safeatendimento-production.up.railway.app/api');
+                    
+                    // Buscar dados reais das senhas
+                    const response = await fetch(`${API_BASE_URL}/senhas`);
+                    const senhas = await response.ok ? await response.json() : [];
+                    
+                    const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+                    const userName = loggedUser.nome || 'Usuário';
+                    
+                    // Filtrar senhas por período baseado no tipo
+                    const hoje = new Date();
+                    let senhasFiltradas = senhas;
+                    
+                    if (type === 'daily') {
+                        senhasFiltradas = senhas.filter(s => {
+                            const dataSenha = new Date(s.data);
+                            return dataSenha.toDateString() === hoje.toDateString();
+                        });
+                    } else if (type === 'weekly') {
+                        const semanaAtras = new Date(hoje);
+                        semanaAtras.setDate(hoje.getDate() - 7);
+                        senhasFiltradas = senhas.filter(s => {
+                            const dataSenha = new Date(s.data);
+                            return dataSenha >= semanaAtras;
+                        });
+                    } else if (type === 'monthly') {
+                        const mesAtras = new Date(hoje);
+                        mesAtras.setMonth(hoje.getMonth() - 1);
+                        senhasFiltradas = senhas.filter(s => {
+                            const dataSenha = new Date(s.data);
+                            return dataSenha >= mesAtras;
+                        });
+                    }
+                    
+                    const atendidas = senhasFiltradas.filter(s => s.status === 'atendida').length;
+                    const pendentes = senhasFiltradas.filter(s => s.status === 'pendente').length;
+                    const cadastros = senhasFiltradas.filter(s => s.status === 'cadastro').length;
+                    
+                    // Gerar conteúdo do relatório
+                    const conteudoRelatorio = 
+                        `=== ${reportName} ===\n` +
+                        `Data: ${new Date().toLocaleDateString('pt-BR')}\n` +
+                        `Gerado por: ${userName}\n` +
+                        `Tipo: ${type}\n\n` +
+                        `=== Estatísticas ===\n` +
+                        `Total de senhas: ${senhasFiltradas.length}\n` +
+                        `Atendidas: ${atendidas}\n` +
+                        `Pendentes: ${pendentes}\n` +
+                        `Cadastros: ${cadastros}\n\n` +
+                        `=== Detalhes ===\n` +
+                        senhasFiltradas.map(s => 
+                            `Senha: ${s.senha} | Nome: ${s.nome || 'Sem nome'} | Status: ${s.status} | Data: ${new Date(s.data).toLocaleString('pt-BR')}`
+                        ).join('\n');
+                    
+                    // Download do relatório
+                    const link = document.createElement('a');
+                    link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(conteudoRelatorio);
+                    link.download = `${reportName.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.txt`;
+                    link.click();
+                } catch (error) {
+                    console.error('Erro ao gerar relatório:', error);
+                    alert('Erro ao gerar relatório. Tente novamente.');
+                }
+            })();
         }
 
         // Load recent activity
