@@ -80,10 +80,10 @@
         opacity: 1;
       }
       .section-content {
-        display: none;
+        display: none !important;
       }
       .section-content.active {
-            display: block;
+            display: block !important;
       }
         input:checked + .toggle-slider {
             background-color: #3b82f6;
@@ -108,15 +108,15 @@
             <div class="px-4">
                 <div class="mb-8">
                     <div class="text-xs font-semibold uppercase tracking-wide opacity-70 mb-3 px-4">Principal</div>
-                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item active bg-white/20 font-semibold" onclick="showSection('dashboard')">
+                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item active bg-white/20 font-semibold" onclick="event.preventDefault(); showSection('dashboard', event);">
                         <i class="fas fa-home text-base w-5 text-center"></i>
                         <span class="text-sm">Dashboard</span>
                     </a>
-                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item" onclick="showSection('pacientes')">
+                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item" onclick="event.preventDefault(); showSection('pacientes', event);">
                         <i class="fas fa-users text-base w-5 text-center"></i>
                         <span class="text-sm">Pacientes</span>
                     </a>
-                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item" onclick="showSection('consultas')">
+                    <a href="#" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item" onclick="event.preventDefault(); showSection('consultas', event);">
                         <i class="fas fa-calendar-alt text-base w-5 text-center"></i>
                         <span class="text-sm">Consultas</span>
                     </a>
@@ -307,20 +307,33 @@
                             </div>
 
                 <!-- Patients Section -->
-                <div class="hidden section-content" id="patientsSection">
-                    <h2 class="mb-6">Pacientes</h2>
+                <div class="section-content hidden" id="patientsSection">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+                        <h2 class="text-2xl font-bold text-gray-800">Pacientes do SOC</h2>
+                        <div class="relative flex-1 md:max-w-md">
+                            <input 
+                                type="text" 
+                                id="patientSearchInput" 
+                                placeholder="Buscar por nome, CPF ou código..." 
+                                class="w-full py-3 pl-10 pr-4 border-2 border-gray-200 rounded-lg text-sm transition-all duration-300 bg-white focus:outline-none focus:border-blue-500 focus:shadow-lg focus:shadow-blue-500/10"
+                                oninput="filterPatients()"
+                            >
+                            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        </div>
+                    </div>
+                    <div class="mb-4 text-sm text-gray-600" id="patientsCount"></div>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6" id="patientsGrid">
                         <!-- Pacientes serão carregados dinamicamente -->
-                        </div>
-                            </div>
+                    </div>
+                </div>
 
                 <!-- Consultations Section -->
-                <div class="hidden section-content" id="consultationsSection">
-                    <h2 class="mb-6">Consultas</h2>
+                <div class="section-content hidden" id="consultationsSection">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">Consultas</h2>
                     <div class="bg-white rounded-xl p-6 shadow-md border border-gray-200" id="consultationsList">
                         <!-- Consultas serão carregadas dinamicamente -->
-                            </div>
-                        </div>
+                    </div>
+                </div>
 
                 <!-- Reports Section -->
                 <div class="hidden section-content" id="reportsSection">
@@ -782,6 +795,7 @@
         </div>
     </div>
 
+    <script src="../js/config.js"></script>
     <script src="../js/dashboard.js"></script>
 </body>
 </html>

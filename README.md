@@ -85,13 +85,22 @@ Este projeto utiliza CDNs para as seguintes bibliotecas:
 
 ## 🔌 API Backend
 
-O frontend se conecta ao backend hospedado no Railway:
+O frontend se conecta automaticamente ao backend:
 
-- **Base URL:** `https://safeatendimento-production.up.railway.app/api`
-- **Endpoints principais:**
-  - `/api/soc` - Dados do SOC
-  - `/api/senhas` - Gerenciamento de senhas
+- **Backend Local (desenvolvimento):** `http://localhost:3000/api` (quando acessado via localhost)
+- **Backend Railway (produção):** `https://safeatendimento-production.up.railway.app/api`
+
+A configuração é automática através do arquivo `js/config.js`.
+
+### Endpoints principais:
+  - `GET /api/soc` - Dados do SOC
+  - `GET /api/senhas` - Lista de senhas
+  - `POST /api/senhas` - Criar nova senha
+  - `GET /api/senhas/recentes` - Senhas recentes
   - `/api/usuarios` - Gerenciamento de usuários
+
+### Para rodar o backend localmente:
+Veja o arquivo [BACKEND_SETUP.md](./BACKEND_SETUP.md) para instruções detalhadas.
 
 ## 🎨 Personalização
 

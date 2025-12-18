@@ -7,9 +7,18 @@ let consulta = null;
 let consultasSOC = [];
 let filaSemAgendamento = [];
 
-// Usando backend Node.js hospedado no Railway
-const SOC_URL = "https://safeatendimento-production.up.railway.app/api/soc";
-const API_BASE_URL = "https://safeatendimento-production.up.railway.app/api";
+// URLs da API - carregadas do config.js
+const API_BASE_URL = window.API_CONFIG?.BASE_URL || "http://localhost:3000/api";
+
+// Função para obter URL do SOC com data
+function getSOCUrl(data) {
+    if (window.API_CONFIG?.getSOC_URL) {
+        return window.API_CONFIG.getSOC_URL(data);
+    }
+    // Fallback
+    const dataParam = data || new Date().toISOString().split('T')[0];
+    return `${API_BASE_URL}/soc?data=${dataParam}`;
+}
 
 function gerarSenhaAleatoria() {
   const letra = String.fromCharCode(65 + Math.floor(Math.random() * 3));
@@ -140,7 +149,10 @@ async function buscarPorCPF() {
   // Carregar dados do SOC se ainda não carregou
   if (consultasSOC.length === 0) {
     try {
-      const res = await fetch(SOC_URL);
+      // Buscar SOC com data de hoje
+      const hoje = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const socUrl = getSOCUrl(hoje);
+      const res = await fetch(socUrl);
       consultasSOC = await res.json();
     } catch (e) {
       erroDiv.innerText = "Erro ao buscar dados do SOC.";

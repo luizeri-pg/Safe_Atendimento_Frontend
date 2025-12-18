@@ -1,4 +1,16 @@
-const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
+// URLs da API - carregadas do config.js
+const API_URL = window.API_CONFIG?.SENHAS_URL || "http://localhost:3000/api/senhas";
+
+// Função para obter URL do SOC com data (URL fixa, só muda o parâmetro data)
+function getSOCUrl(data) {
+    if (window.API_CONFIG?.getSOC_URL) {
+        return window.API_CONFIG.getSOC_URL(data);
+    }
+    // Fallback - URL fixa do SOC com parâmetro de data
+    const dataParam = data || new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
+    const baseURL = window.API_CONFIG?.BASE_URL || "http://localhost:3000/api";
+    return `${baseURL}/soc?data=${dataParam}`;
+}
 
         // Notification System
         class NotificationSystem {
@@ -161,6 +173,7 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
 
             async checkForNewPatients() {
                 try {
+                    // Buscar senhas
                     const response = await fetch(API_URL);
                     const senhas = await response.json();
                     
@@ -929,38 +942,69 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
         }
 
         // Show section
-        function showSection(section) {
+        function showSection(section, event) {
+            // Mapear nomes em português para IDs em inglês
+            const sectionIdMap = {
+                'dashboard': 'dashboard',
+                'pacientes': 'patientsSection',
+                'consultas': 'consultationsSection',
+                'reports': 'reportsSection'
+            };
+            
+            const sectionId = sectionIdMap[section] || section;
+            
             // Hide all sections
             document.querySelectorAll('.section-content').forEach(el => {
                 el.classList.remove('active');
+                el.classList.add('hidden');
             });
             
             // Remove active class from all nav items
             document.querySelectorAll('.nav-item').forEach(el => {
-                el.classList.remove('active');
+                el.classList.remove('active', 'bg-white/20', 'font-semibold');
             });
             
             // Show selected section
             if (section === 'dashboard') {
                 // Show dashboard content (default)
-                document.querySelector('.dashboard-grid').style.display = 'grid';
-                document.querySelector('.quick-actions').style.display = 'block';
-                document.querySelector('.recent-activity').style.display = 'block';
+                const dashboardGrid = document.querySelector('.dashboard-grid');
+                const quickActions = document.querySelector('.quick-actions');
+                const recentActivity = document.querySelector('.recent-activity');
+                
+                if (dashboardGrid) dashboardGrid.style.display = 'grid';
+                if (quickActions) quickActions.style.display = 'block';
+                if (recentActivity) recentActivity.style.display = 'block';
             } else {
                 // Hide dashboard content
-                document.querySelector('.dashboard-grid').style.display = 'none';
-                document.querySelector('.quick-actions').style.display = 'none';
-                document.querySelector('.recent-activity').style.display = 'none';
+                const dashboardGrid = document.querySelector('.dashboard-grid');
+                const quickActions = document.querySelector('.quick-actions');
+                const recentActivity = document.querySelector('.recent-activity');
+                
+                if (dashboardGrid) dashboardGrid.style.display = 'none';
+                if (quickActions) quickActions.style.display = 'none';
+                if (recentActivity) recentActivity.style.display = 'none';
                 
                 // Show section content
-                const sectionElement = document.getElementById(section + 'Section');
+                const sectionElement = document.getElementById(sectionId);
                 if (sectionElement) {
+                    // Remover todas as classes que podem esconder
+                    sectionElement.classList.remove('hidden');
+                    // Adicionar classe active
                     sectionElement.classList.add('active');
+                    // Forçar display block para garantir que apareça
+                    sectionElement.style.display = 'block';
+                } else {
+                    console.error('Seção não encontrada:', sectionId);
                 }
             }
             
             // Add active class to clicked nav item
-            event.target.closest('.nav-item').classList.add('active');
+            if (event && event.target) {
+                const navItem = event.target.closest('.nav-item');
+                if (navItem) {
+                    navItem.classList.add('active', 'bg-white/20', 'font-semibold');
+                }
+            }
             
             // Load section data
             loadSectionData(section);
@@ -969,14 +1013,26 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
         // Load section data
         async function loadSectionData(section) {
             try {
-                const response = await fetch(API_URL);
-                const senhas = await response.json();
-                
                 switch(section) {
                     case 'pacientes':
-                        loadPatientsData(senhas);
+                        // Buscar pacientes do SOC
+                        await loadPatientsFromSOC();
                         break;
                     case 'consultas':
+                        // Buscar consultas das senhas
+                        const response = await fetch(API_URL);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Erro HTTP: ${response.status}`);
+                        }
+                        
+                        const senhas = await response.json();
+                        
+                        // Garantir que é um array
+                        if (!Array.isArray(senhas)) {
+                            throw new Error('Resposta da API não é um array');
+                        }
+                        
                         loadConsultationsData(senhas);
                         break;
                     case 'reports':
@@ -985,110 +1041,434 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
                 }
             } catch (error) {
                 console.error('Erro ao carregar dados da seção:', error);
+                
+                // Mostrar mensagem de erro nas seções
+                if (section === 'pacientes') {
+                    const patientsGrid = document.getElementById('patientsGrid');
+                    if (patientsGrid) {
+                        patientsGrid.innerHTML = `
+                            <div class="col-span-full text-center py-10 text-red-500">
+                                <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                                <p>Erro ao carregar pacientes do SOC</p>
+                                <p class="text-sm mt-2">${error.message}</p>
+                            </div>
+                        `;
+                    }
+                } else if (section === 'consultas') {
+                    const consultationsList = document.getElementById('consultationsList');
+                    if (consultationsList) {
+                        consultationsList.innerHTML = `
+                            <div class="text-center py-10 text-red-500">
+                                <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                                <p>Erro ao carregar consultas</p>
+                            </div>
+                        `;
+                    }
+                }
             }
         }
 
-        // Load patients data
-        function loadPatientsData(senhas) {
+        // Variável global para armazenar todos os pacientes do SOC
+        let allPatientsData = [];
+
+        // Load patients from SOC - mesma lógica usada no index.js para buscar no SOC
+        async function loadPatientsFromSOC() {
             const patientsGrid = document.getElementById('patientsGrid');
-            const hoje = new Date();
-            hoje.setHours(0, 0, 0, 0);
+            const patientsCount = document.getElementById('patientsCount');
+            if (!patientsGrid) return;
             
-            const senhasHoje = senhas.filter(s => new Date(s.data) >= hoje);
+            // Mostrar loading
+            patientsGrid.innerHTML = `
+                <div class="col-span-full text-center py-10 text-gray-500">
+                    <i class="fas fa-spinner fa-spin text-5xl mb-4 text-gray-300"></i>
+                    <h3 class="text-lg font-semibold mb-2">Carregando pacientes do SOC...</h3>
+                </div>
+            `;
             
-            if (senhasHoje.length === 0) {
+            try {
+                // Mesma lógica do index.js: buscar SOC com data de hoje
+                const hoje = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                const socUrl = getSOCUrl(hoje);
+                console.log('Buscando pacientes do SOC na URL:', socUrl);
+                
+                const response = await fetch(socUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
+                const consultasSOC = await response.json();
+                
+                // Garantir que é um array
+                if (!Array.isArray(consultasSOC)) {
+                    throw new Error('Resposta da API SOC não é um array');
+                }
+                
+                // Armazenar todos os pacientes globalmente para filtro
+                allPatientsData = consultasSOC;
+                
+                if (consultasSOC.length === 0) {
+                    patientsGrid.innerHTML = `
+                        <div class="col-span-full text-center py-10 text-gray-500">
+                            <i class="fas fa-users text-5xl mb-4 text-gray-300"></i>
+                            <h3 class="text-lg font-semibold mb-2">Nenhum paciente encontrado no SOC</h3>
+                            <p class="text-sm">Não há pacientes agendados para hoje no SOC</p>
+                        </div>
+                    `;
+                    if (patientsCount) patientsCount.textContent = '';
+                    return;
+                }
+                
+                // Renderizar pacientes (sem filtro inicial)
+                renderPatients(consultasSOC);
+                
+            } catch (error) {
+                console.error('Erro ao carregar pacientes do SOC:', error);
+                
+                const is404 = error.message && (error.message.includes('404') || error.message.includes('Load failed') || 
+                             error.message.includes('CORS') || error.message.includes('Access-Control'));
+                
+                // Detectar tipo de erro
+                const isConnectionError = error.message && (
+                    error.message.includes('Load failed') || 
+                    error.message.includes('Failed to fetch') ||
+                    error.message.includes('Não foi possível conectar')
+                );
+                
+                const errorMessage = isConnectionError
+                    ? 'Backend não está rodando. Inicie o backend local na porta 3000.'
+                    : (error.message || 'Erro desconhecido');
+                
+                const hoje = new Date().toISOString().split('T')[0];
+                const socUrl = getSOCUrl(hoje);
+                
                 patientsGrid.innerHTML = `
-                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #718096;">
-                        <i class="fas fa-users" style="font-size: 48px; margin-bottom: 16px; color: #cbd5e0;"></i>
-                        <h3>Nenhum paciente hoje</h3>
-                        <p>Os pacientes aparecerão aqui quando houver atendimentos</p>
+                    <div class="col-span-full text-center py-10">
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
+                            <i class="fas fa-exclamation-triangle text-4xl mb-4 text-yellow-600"></i>
+                            <h3 class="text-lg font-semibold mb-2 text-gray-800">Backend Não Encontrado</h3>
+                            <p class="text-sm text-gray-600 mb-4">${errorMessage}</p>
+                            ${isConnectionError ? `
+                                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4 text-left">
+                                    <p class="text-xs font-semibold text-blue-800 mb-2">Como iniciar o backend:</p>
+                                    <ol class="text-xs text-blue-700 list-decimal list-inside space-y-1">
+                                        <li>Navegue até a pasta do backend</li>
+                                        <li>Execute: <code class="bg-blue-100 px-1 rounded">npm start</code> ou <code class="bg-blue-100 px-1 rounded">npm run dev</code></li>
+                                        <li>Verifique se está rodando na porta 3000</li>
+                                    </ol>
+                                </div>
+                            ` : ''}
+                            <p class="text-xs text-gray-500 mt-4 mb-2">URL esperada:</p>
+                            <code class="text-xs bg-gray-100 px-2 py-1 rounded break-all block">${socUrl}</code>
+                            <button onclick="loadSectionData('pacientes')" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm">
+                                <i class="fas fa-redo mr-2"></i>Tentar novamente
+                            </button>
+                        </div>
                     </div>
                 `;
+            }
+        }
+
+        // Função para renderizar pacientes
+        function renderPatients(patients) {
+            const patientsGrid = document.getElementById('patientsGrid');
+            const patientsCount = document.getElementById('patientsCount');
+            
+            if (!patientsGrid) return;
+            
+            if (patients.length === 0) {
+                patientsGrid.innerHTML = `
+                    <div class="col-span-full text-center py-10 text-gray-500">
+                        <i class="fas fa-search text-5xl mb-4 text-gray-300"></i>
+                        <h3 class="text-lg font-semibold mb-2">Nenhum paciente encontrado</h3>
+                        <p class="text-sm">Tente ajustar os termos de busca</p>
+                    </div>
+                `;
+                if (patientsCount) patientsCount.textContent = '0 pacientes encontrados';
                 return;
             }
             
-            patientsGrid.innerHTML = senhasHoje.map(senha => `
-                <div class="patient-card">
-                    <div class="patient-header">
-                        <div class="patient-avatar">
-                            ${senha.nome ? senha.nome.charAt(0).toUpperCase() : '?'}
+            // Atualizar contador
+            if (patientsCount) {
+                const total = allPatientsData.length;
+                const showing = patients.length;
+                patientsCount.textContent = total === showing 
+                    ? `${showing} paciente${showing !== 1 ? 's' : ''} encontrado${showing !== 1 ? 's' : ''}`
+                    : `Mostrando ${showing} de ${total} paciente${total !== 1 ? 's' : ''}`;
+            }
+            
+            // Formatar e exibir pacientes do SOC (mesma estrutura do index.js)
+            patientsGrid.innerHTML = patients.map(consulta => {
+                const nomeDisplay = consulta.NOMEFUNCIONARIO || 'Sem nome';
+                const inicial = nomeDisplay.charAt(0).toUpperCase();
+                const cpf = consulta.CPFFUNCIONARIO || 'N/A';
+                const codigo = consulta.CODIGOFUNCIONARIO || 'N/A';
+                const dataCompromisso = consulta.DATACOMPROMISSO ? 
+                    formatarDataSOC(consulta.DATACOMPROMISSO) : 'Não agendado';
+                
+                // Formatar CPF (mesma lógica do index.js)
+                const cpfFormatado = formatarCPF(cpf);
+                
+                return `
+                    <div class="bg-white rounded-xl p-4 shadow-md border border-gray-200 hover:shadow-lg transition-shadow">
+                        <div class="flex items-center gap-4 mb-3">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-lg">
+                                ${inicial}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h4 class="font-semibold text-gray-800 truncate">${nomeDisplay}</h4>
+                                <p class="text-sm text-gray-600">CPF: ${cpfFormatado}</p>
+                                <p class="text-sm text-gray-600">Código: ${codigo}</p>
+                            </div>
                         </div>
-                        <div class="patient-info">
-                            <h4>${senha.nome || 'Sem nome'}</h4>
-                            <p>Senha: ${senha.senha}</p>
+                        <div class="border-t border-gray-200 pt-3 mt-3">
+                            <div class="flex items-center justify-between text-xs text-gray-600">
+                                <span><i class="fas fa-calendar-alt mr-1"></i>${dataCompromisso}</span>
+                            </div>
                         </div>
                     </div>
-                    <div class="patient-status ${senha.status}">
-                        ${senha.status === 'atendida' ? 'Atendido' : 
-                          senha.status === 'pendente' ? 'Aguardando' : 'Cadastro'}
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
+        }
+
+        // Função para filtrar pacientes
+        function filterPatients() {
+            const searchInput = document.getElementById('patientSearchInput');
+            if (!searchInput || allPatientsData.length === 0) return;
+            
+            const searchTerm = searchInput.value.trim();
+            
+            if (searchTerm === '') {
+                // Se não há busca, mostrar todos
+                renderPatients(allPatientsData);
+                return;
+            }
+            
+            const searchTermLower = searchTerm.toLowerCase();
+            const searchTermNumbers = searchTerm.replace(/\D/g, ''); // Apenas números
+            const isOnlyNumbers = /^\d+$/.test(searchTerm); // Se é apenas números
+            
+            // Filtrar pacientes
+            const filteredPatients = allPatientsData.filter(consulta => {
+                const nome = (consulta.NOMEFUNCIONARIO || '').toLowerCase();
+                const cpf = consulta.CPFFUNCIONARIO ? consulta.CPFFUNCIONARIO.toString().replace(/\D/g, '') : '';
+                const codigo = (consulta.CODIGOFUNCIONARIO || '').toString();
+                const codigoLower = codigo.toLowerCase();
+                
+                // Se a busca é apenas números e tem 6 dígitos ou menos, priorizar código
+                if (isOnlyNumbers && searchTermNumbers.length <= 6) {
+                    // Buscar por código primeiro (match exato ou parcial no início)
+                    if (codigo === searchTerm || codigo.startsWith(searchTerm)) {
+                        return true;
+                    }
+                    // Se não encontrou no código, buscar no nome também
+                    if (nome.includes(searchTermLower)) {
+                        return true;
+                    }
+                    // Não buscar no CPF para buscas curtas numéricas
+                    return false;
+                }
+                
+                // Para buscas mais longas ou com letras, buscar em todos os campos
+                return nome.includes(searchTermLower) || 
+                       (searchTermNumbers.length >= 7 && cpf.includes(searchTermNumbers)) || 
+                       codigoLower.includes(searchTermLower);
+            });
+            
+            // Renderizar pacientes filtrados
+            renderPatients(filteredPatients);
+        }
+
+        // Expor função globalmente para o HTML
+        window.filterPatients = filterPatients;
+        
+        // Helper function to format CPF
+        function formatarCPF(cpf) {
+            if (!cpf) return 'N/A';
+            const cpfLimpo = cpf.toString().replace(/\D/g, '');
+            if (cpfLimpo.length !== 11) return cpf;
+            return cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+        }
+        
+        // Helper function to format SOC date
+        function formatarDataSOC(dataISO) {
+            if (!dataISO) return 'Não agendado';
+            try {
+                const data = new Date(dataISO);
+                if (isNaN(data.getTime())) return dataISO;
+                return data.toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (e) {
+                return dataISO;
+            }
         }
 
         // Load consultations data
         function loadConsultationsData(senhas) {
             const consultationsList = document.getElementById('consultationsList');
-            const hoje = new Date();
-            hoje.setHours(0, 0, 0, 0);
+            if (!consultationsList) return;
             
-            const senhasHoje = senhas.filter(s => new Date(s.data) >= hoje)
-                                  .sort((a, b) => new Date(b.data) - new Date(a.data));
-            
-            if (senhasHoje.length === 0) {
+            // Garantir que é um array
+            if (!Array.isArray(senhas)) {
                 consultationsList.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #718096;">
-                        <i class="fas fa-calendar-alt" style="font-size: 48px; margin-bottom: 16px; color: #cbd5e0;"></i>
-                        <h3>Nenhuma consulta hoje</h3>
-                        <p>As consultas aparecerão aqui quando houver atendimentos</p>
+                    <div class="text-center py-10 text-gray-500">
+                        <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                        <p>Erro ao carregar consultas</p>
                     </div>
                 `;
                 return;
             }
             
-            consultationsList.innerHTML = senhasHoje.map(senha => `
-                <div class="consultation-item">
-                    <div class="consultation-time">
-                        ${new Date(senha.data).toLocaleTimeString('pt-BR', { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                        })}
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            
+            const senhasHoje = senhas
+                .filter(s => {
+                    if (!s.data) return false;
+                    const dataSenha = new Date(s.data);
+                    return dataSenha >= hoje;
+                })
+                .sort((a, b) => {
+                    const dataA = new Date(a.data);
+                    const dataB = new Date(b.data);
+                    return dataB - dataA; // Mais recentes primeiro
+                });
+            
+            if (senhasHoje.length === 0) {
+                consultationsList.innerHTML = `
+                    <div class="text-center py-10 text-gray-500">
+                        <i class="fas fa-calendar-alt text-5xl mb-4 text-gray-300"></i>
+                        <h3 class="text-lg font-semibold mb-2">Nenhuma consulta hoje</h3>
+                        <p class="text-sm">As consultas aparecerão aqui quando houver atendimentos</p>
                     </div>
-                    <div class="consultation-details">
-                        <div class="consultation-patient">${senha.nome || 'Sem nome'}</div>
-                        <div class="consultation-info">
-                            Senha: ${senha.senha} • 
-                            Status: ${senha.status === 'atendida' ? 'Atendido' : 
-                                    senha.status === 'pendente' ? 'Aguardando' : 'Cadastro'}
+                `;
+                return;
+            }
+            
+            consultationsList.innerHTML = senhasHoje.map(senha => {
+                const dataHora = new Date(senha.data);
+                const horaFormatada = dataHora.toLocaleTimeString('pt-BR', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+                const nomeDisplay = senha.nome || 'Sem nome';
+                const statusText = senha.status === 'atendida' ? 'Atendido' : 
+                                  senha.status === 'pendente' ? 'Aguardando' : 'Cadastro';
+                const statusClass = senha.status === 'atendida' ? 'bg-green-100 text-green-800' :
+                                   senha.status === 'pendente' ? 'bg-orange-100 text-orange-800' :
+                                   'bg-blue-100 text-blue-800';
+                
+                return `
+                    <div class="flex items-center gap-4 p-4 border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors">
+                        <div class="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold">
+                            ${horaFormatada}
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-semibold text-gray-800 mb-1">${nomeDisplay}</div>
+                            <div class="text-sm text-gray-600 flex items-center gap-3">
+                                <span>Senha: <strong>${senha.senha}</strong></span>
+                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusClass}">
+                                    ${statusText}
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         // Load dashboard data
         async function loadDashboardData() {
             try {
+                // Mostrar estado de loading
+                const pacientesHojeEl = document.getElementById('pacientesHoje');
+                const consultasRealizadasEl = document.getElementById('consultasRealizadas');
+                const naFilaEl = document.getElementById('naFila');
+                const tempoMedioEl = document.getElementById('tempoMedio');
+                
+                if (pacientesHojeEl) pacientesHojeEl.textContent = '...';
+                if (consultasRealizadasEl) consultasRealizadasEl.textContent = '...';
+                if (naFilaEl) naFilaEl.textContent = '...';
+                if (tempoMedioEl) tempoMedioEl.textContent = '...';
+                
                 const response = await fetch(API_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
                 const senhas = await response.json();
+                
+                // Garantir que é um array
+                if (!Array.isArray(senhas)) {
+                    throw new Error('Resposta da API não é um array');
+                }
                 
                 const hoje = new Date();
                 hoje.setHours(0, 0, 0, 0);
                 
-                const senhasHoje = senhas.filter(s => new Date(s.data) >= hoje);
+                // Filtrar senhas de hoje
+                const senhasHoje = senhas.filter(s => {
+                    if (!s.data) return false;
+                    const dataSenha = new Date(s.data);
+                    return dataSenha >= hoje;
+                });
+                
                 const atendidas = senhasHoje.filter(s => s.status === 'atendida').length;
                 const pendentes = senhasHoje.filter(s => s.status === 'pendente').length;
+                const cadastros = senhasHoje.filter(s => s.status === 'cadastro').length;
                 
-                document.getElementById('pacientesHoje').textContent = senhasHoje.length;
-                document.getElementById('consultasRealizadas').textContent = atendidas;
-                document.getElementById('naFila').textContent = pendentes;
+                // Atualizar elementos se existirem
+                if (pacientesHojeEl) pacientesHojeEl.textContent = senhasHoje.length;
+                if (consultasRealizadasEl) consultasRealizadasEl.textContent = atendidas;
+                if (naFilaEl) naFilaEl.textContent = pendentes + cadastros; // Total na fila (pendentes + cadastros)
                 
-                // Tempo médio simulado
-                const tempoMedio = atendidas > 0 ? Math.floor(15 + Math.random() * 10) : 0;
-                document.getElementById('tempoMedio').textContent = `${tempoMedio}min`;
+                // Calcular tempo médio baseado nos dados reais (simplificado)
+                // Em uma implementação real, isso seria calculado com base no tempo real de atendimento
+                let tempoMedio = 0;
+                if (atendidas > 0) {
+                    // Para demonstração, estimamos 15-20 minutos por consulta
+                    tempoMedio = Math.floor(15 + (atendidas * 0.5));
+                }
+                
+                if (tempoMedioEl) tempoMedioEl.textContent = tempoMedio > 0 ? `${tempoMedio}min` : '0min';
                 
             } catch (error) {
-                console.error('Erro ao carregar dados:', error);
+                console.error('Erro ao carregar dados do dashboard:', error);
+                
+                // Verificar se é erro 404/CORS (API indisponível)
+                const is404 = error.message && (error.message.includes('404') || error.message.includes('Load failed') || 
+                             error.message.includes('CORS') || error.message.includes('Access-Control'));
+                
+                // Mostrar valores padrão em caso de erro
+                const pacientesHojeEl = document.getElementById('pacientesHoje');
+                const consultasRealizadasEl = document.getElementById('consultasRealizadas');
+                const naFilaEl = document.getElementById('naFila');
+                const tempoMedioEl = document.getElementById('tempoMedio');
+                
+                if (pacientesHojeEl) pacientesHojeEl.textContent = is404 ? '?' : '0';
+                if (consultasRealizadasEl) consultasRealizadasEl.textContent = is404 ? '?' : '0';
+                if (naFilaEl) naFilaEl.textContent = is404 ? '?' : '0';
+                if (tempoMedioEl) tempoMedioEl.textContent = is404 ? '--' : '0min';
+                
+                // Mostrar notificação de erro apenas na primeira vez
+                if (!window.dashboardErrorShown) {
+                    window.dashboardErrorShown = true;
+                    const message = is404 
+                        ? 'Backend indisponível. Verifique se o servidor Railway está rodando.'
+                        : 'Não foi possível carregar os dados do dashboard. Verifique sua conexão.';
+                    
+                    notificationSystem.addNotification(
+                        'warning',
+                        'API Indisponível',
+                        message
+                    );
+                }
             }
         }
 
@@ -1135,17 +1515,46 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
         // Load recent activity
         async function loadRecentActivity() {
             try {
+                const activityList = document.getElementById('activityList');
+                if (!activityList) return;
+                
+                // Mostrar loading
+                activityList.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #718096;">
+                        <i class="fas fa-spinner fa-spin" style="font-size: 24px; margin-bottom: 8px; color: #cbd5e0;"></i>
+                        <p>Carregando atividades...</p>
+                    </div>
+                `;
+                
                 const response = await fetch(API_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
                 const senhas = await response.json();
+                
+                // Garantir que é um array
+                if (!Array.isArray(senhas)) {
+                    throw new Error('Resposta da API não é um array');
+                }
                 
                 const hoje = new Date();
                 hoje.setHours(0, 0, 0, 0);
                 
-                const senhasHoje = senhas.filter(s => new Date(s.data) >= hoje)
-                                      .sort((a, b) => new Date(b.data) - new Date(a.data))
-                                      .slice(0, 5); // Últimas 5 atividades
-                
-                const activityList = document.getElementById('activityList');
+                // Filtrar e ordenar senhas de hoje
+                const senhasHoje = senhas
+                    .filter(s => {
+                        if (!s.data) return false;
+                        const dataSenha = new Date(s.data);
+                        return dataSenha >= hoje;
+                    })
+                    .sort((a, b) => {
+                        const dataA = new Date(a.data);
+                        const dataB = new Date(b.data);
+                        return dataB - dataA; // Mais recentes primeiro
+                    })
+                    .slice(0, 5); // Últimas 5 atividades
                 
                 if (senhasHoje.length === 0) {
                     activityList.innerHTML = `
@@ -1160,15 +1569,20 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
                 activityList.innerHTML = senhasHoje.map(senha => {
                     const timeAgo = getTimeAgo(new Date(senha.data));
                     const activityType = getActivityType(senha.status);
+                    const nomeDisplay = senha.nome || 'Sem nome';
                     
                     return `
-                        <div class="activity-item">
-                            <div class="activity-icon ${activityType.class}">
+                        <div class="activity-item flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br ${
+                                activityType.class === 'primary' ? 'from-blue-500 to-blue-700' :
+                                activityType.class === 'warning' ? 'from-orange-500 to-orange-600' :
+                                'from-green-500 to-green-600'
+                            } flex items-center justify-center text-white">
                                 <i class="fas ${activityType.icon}"></i>
                             </div>
-                            <div class="activity-content">
-                                <div class="activity-text">${activityType.text} - ${senha.nome || 'Sem nome'}</div>
-                                <div class="activity-time">${timeAgo}</div>
+                            <div class="flex-1">
+                                <div class="text-sm font-medium text-gray-800">${activityType.text} - ${nomeDisplay}</div>
+                                <div class="text-xs text-gray-500">${timeAgo}</div>
                             </div>
                         </div>
                     `;
@@ -1176,6 +1590,20 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
                 
             } catch (error) {
                 console.error('Erro ao carregar atividade recente:', error);
+                const activityList = document.getElementById('activityList');
+                if (activityList) {
+                    const is404 = error.message.includes('404') || error.message.includes('Load failed') || 
+                                 error.message.includes('CORS') || error.message.includes('Access-Control');
+                    
+                    activityList.innerHTML = `
+                        <div class="text-center py-8">
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                <i class="fas fa-exclamation-triangle text-2xl mb-2 text-yellow-600"></i>
+                                <p class="text-sm text-gray-600">${is404 ? 'API indisponível' : 'Erro ao carregar atividades'}</p>
+                            </div>
+                        </div>
+                    `;
+                }
             }
         }
 
@@ -1215,14 +1643,40 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
         }
 
         // Auto-refresh data every 30 seconds
-        setInterval(() => {
-            loadDashboardData();
-            loadRecentActivity();
-        }, 30000);
+        let refreshInterval = null;
 
-        // Load initial data
-        loadDashboardData();
-        loadRecentActivity();
+        function startAutoRefresh() {
+            // Limpar intervalo anterior se existir
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+            
+            // Configurar auto-refresh a cada 30 segundos
+            refreshInterval = setInterval(() => {
+                loadDashboardData();
+                loadRecentActivity();
+            }, 30000);
+        }
+
+        // Load initial data when DOM is ready
+        function initDashboard() {
+            // Verificar se os elementos necessários existem
+            if (document.getElementById('pacientesHoje') && document.getElementById('activityList')) {
+                loadDashboardData();
+                loadRecentActivity();
+                startAutoRefresh();
+            } else {
+                // Tentar novamente após um pequeno delay se os elementos não existirem ainda
+                setTimeout(initDashboard, 100);
+            }
+        }
+
+        // Aguardar DOM estar pronto
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initDashboard);
+        } else {
+            initDashboard();
+        }
 
         // Mobile sidebar handling
         if (window.innerWidth <= 768) {
@@ -1236,4 +1690,3 @@ const API_URL = "https://safeatendimento-production.up.railway.app/api/senhas";
                 document.getElementById('sidebar').classList.remove('collapsed');
             }
         });
-    </script>
