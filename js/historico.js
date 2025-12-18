@@ -48,21 +48,23 @@
           
           if (senhas.length === 0) {
             tabelaContainer.innerHTML = "";
-            semSenhas.style.display = "block";
+            semSenhas.classList.remove("hidden");
+            semSenhas.classList.add("block");
           } else {
-            semSenhas.style.display = "none";
+            semSenhas.classList.add("hidden");
+            semSenhas.classList.remove("block");
             
             // Ordena por data (mais recentes primeiro)
             senhas.sort((a, b) => new Date(b.data) - new Date(a.data));
             
             let html = `
-              <table>
+              <table class="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th><i class="fas fa-ticket-alt"></i> Senha</th>
-                    <th><i class="fas fa-user"></i> Nome</th>
-                    <th><i class="fas fa-info-circle"></i> Status</th>
-                    <th><i class="fas fa-clock"></i> Horário</th>
+                    <th class="bg-gradient-to-br from-blue-500 to-blue-700 text-white py-5 px-4 text-left font-semibold text-sm uppercase tracking-wide"><i class="fas fa-ticket-alt"></i> Senha</th>
+                    <th class="bg-gradient-to-br from-blue-500 to-blue-700 text-white py-5 px-4 text-left font-semibold text-sm uppercase tracking-wide"><i class="fas fa-user"></i> Nome</th>
+                    <th class="bg-gradient-to-br from-blue-500 to-blue-700 text-white py-5 px-4 text-left font-semibold text-sm uppercase tracking-wide"><i class="fas fa-info-circle"></i> Status</th>
+                    <th class="bg-gradient-to-br from-blue-500 to-blue-700 text-white py-5 px-4 text-left font-semibold text-sm uppercase tracking-wide"><i class="fas fa-clock"></i> Horário</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -72,12 +74,21 @@
               const statusClass = s.status;
               const statusText = s.status.charAt(0).toUpperCase() + s.status.slice(1);
               
+              let statusBadgeClass = "inline-block py-1.5 px-3 rounded-full text-xs font-semibold uppercase tracking-wide";
+              if (statusClass === 'pendente') {
+                statusBadgeClass += " bg-yellow-100 text-yellow-700";
+              } else if (statusClass === 'atendida') {
+                statusBadgeClass += " bg-green-100 text-green-700";
+              } else if (statusClass === 'cadastro') {
+                statusBadgeClass += " bg-blue-100 text-blue-700";
+              }
+              
               html += `
-                <tr>
-                  <td class="senha-cell">${s.senha}</td>
-                  <td class="nome-cell">${s.nome || 'Sem nome'}</td>
-                  <td><span class="status-badge status-${statusClass}">${statusText}</span></td>
-                  <td class="horario-cell">${formatarData(s.data)}</td>
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="py-5 px-4 border-b border-gray-100 text-lg font-bold text-blue-500">${s.senha}</td>
+                  <td class="py-5 px-4 border-b border-gray-100 text-base font-medium text-gray-800">${s.nome || 'Sem nome'}</td>
+                  <td class="py-5 px-4 border-b border-gray-100"><span class="${statusBadgeClass}">${statusText}</span></td>
+                  <td class="py-5 px-4 border-b border-gray-100 text-gray-500 font-medium">${formatarData(s.data)}</td>
                 </tr>
               `;
             });
@@ -87,12 +98,14 @@
           }
         } catch (e) {
           console.error("Erro ao carregar histórico:", e);
-          document.getElementById("semSenhas").innerHTML = `
-            <i class="fas fa-exclamation-triangle"></i>
-            <h3>Erro ao carregar dados</h3>
-            <p>Verifique sua conexão e tente novamente</p>
+          const semSenhas = document.getElementById("semSenhas");
+          semSenhas.innerHTML = `
+            <i class="fas fa-exclamation-triangle text-5xl mb-4 text-gray-300"></i>
+            <h3 class="text-2xl font-semibold mb-2 text-gray-700">Erro ao carregar dados</h3>
+            <p class="text-base text-gray-500">Verifique sua conexão e tente novamente</p>
           `;
-          document.getElementById("semSenhas").style.display = "block";
+          semSenhas.classList.remove("hidden");
+          semSenhas.classList.add("block");
         }
       }
 

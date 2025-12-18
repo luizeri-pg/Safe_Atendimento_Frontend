@@ -193,9 +193,11 @@
           lista.innerHTML = "";
           
           if (filaPendentes.length === 0) {
-            semPacientes.style.display = "block";
+            semPacientes.classList.remove("hidden");
+            semPacientes.classList.add("block");
           } else {
-            semPacientes.style.display = "none";
+            semPacientes.classList.add("hidden");
+            semPacientes.classList.remove("block");
             
             filaPendentes.forEach((s, index) => {
               // Não mostrar na fila o paciente que está atualmente em atendimento localmente
@@ -205,7 +207,7 @@
               }
               
               const item = document.createElement("div");
-              item.className = "senha-item";
+              item.className = "senha-item bg-white rounded-2xl py-5 px-6 flex items-center justify-between text-2xl font-semibold shadow-md text-blue-500 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl md:flex-row flex-col gap-3 text-center md:text-left";
               
               const tempoEspera = calcularTempoEspera(s.data);
               
@@ -221,32 +223,32 @@
               if (foiEncaminhado && !foiAceito) {
                 // Paciente encaminhado mas ainda não aceito - mostrar botão de aceitar
                 indicadorEncaminhado = `
-                  <div class="status-encaminhado" style="background: #ff9800; color: white; padding: 8px 12px; border-radius: 8px; margin-top: 8px; font-size: 13px;">
+                  <div class="status-encaminhado bg-orange-500 text-white py-2 px-3 rounded-lg mt-2 text-xs">
                     <i class="fas fa-arrow-right"></i> Encaminhado por <strong>${medicoOrigem}</strong>
                     ${motivoEncaminhamento ? `<br><small>Motivo: ${motivoEncaminhamento}</small>` : ''}
                   </div>
                 `;
                 botaoAcao = `
-                  <button class="btn-aceitar" onclick="aceitarEncaminhamento('${s.senha}')" style="background: linear-gradient(135deg, #4caf50 0%, #45a049 100%); color: white; border: none; border-radius: 12px; padding: 12px 24px; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);">
+                  <button class="btn-aceitar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-sm font-semibold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="aceitarEncaminhamento('${s.senha}')">
                     <i class="fas fa-check"></i> Aceitar
                   </button>
                 `;
               } else if (foiEncaminhado && foiAceito) {
                 // Paciente encaminhado e já aceito - mostrar normalmente
                 indicadorEncaminhado = `
-                  <div class="status-encaminhado" style="background: #4caf50; color: white; padding: 8px 12px; border-radius: 8px; margin-top: 8px; font-size: 13px;">
+                  <div class="status-encaminhado bg-green-500 text-white py-2 px-3 rounded-lg mt-2 text-xs">
                     <i class="fas fa-check-circle"></i> Encaminhado por ${medicoOrigem} (Aceito)
                   </div>
                 `;
                 botaoAcao = `
-                  <button class="btn-chamar" onclick="chamarPaciente('${s.senha}')">
+                  <button class="btn-chamar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-lg font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="chamarPaciente('${s.senha}')">
                     Chamar
                   </button>
                 `;
               } else {
                 // Paciente normal
                 botaoAcao = `
-                  <button class="btn-chamar" onclick="chamarPaciente('${s.senha}')">
+                  <button class="btn-chamar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-lg font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="chamarPaciente('${s.senha}')">
                     Chamar
                   </button>
                 `;
@@ -257,11 +259,11 @@
               
               item.innerHTML = `
                 <div>
-                  <div class="senha-numero">${s.senha}</div>
-                  <div class="senha-nome">${nomeExibicao}</div>
+                  <div class="senha-numero text-3xl font-black text-blue-500">${s.senha}</div>
+                  <div class="senha-nome text-xl font-medium text-gray-800">${nomeExibicao}</div>
                   ${indicadorEncaminhado}
                 </div>
-                <div class="senha-tempo">${tempoEspera}</div>
+                <div class="senha-tempo text-base text-gray-600 font-normal">${tempoEspera}</div>
                 ${botaoAcao}
               `;
               
@@ -501,7 +503,9 @@
             document.getElementById('btnChamarProximo').disabled = true;
             
             // Mostra ações do paciente
-            document.getElementById('acoesPaciente').style.display = 'block';
+            const acoesPaciente = document.getElementById('acoesPaciente');
+            acoesPaciente.classList.remove("hidden");
+            acoesPaciente.classList.add("block");
             
             // Aguardar um pouco e atualizar fila (para garantir que o backend processou)
             // Isso garante que outros médicos vejam que o paciente foi chamado
@@ -587,7 +591,9 @@
           document.getElementById('btnChamarProximo').disabled = false;
           
           // Oculta ações
-          document.getElementById('acoesPaciente').style.display = 'none';
+          const acoesPaciente = document.getElementById('acoesPaciente');
+          acoesPaciente.classList.add("hidden");
+          acoesPaciente.classList.remove("block");
           
           // Atualiza fila
           carregarFila();
@@ -803,11 +809,15 @@
       async function mostrarEncaminhamento() {
         // Carregar médicos ativos antes de mostrar o modal
         await carregarMedicosAtivos();
-        document.getElementById('modalEncaminhamento').style.display = 'flex';
+        const modalEncaminhamento = document.getElementById('modalEncaminhamento');
+        modalEncaminhamento.classList.remove("hidden");
+        modalEncaminhamento.classList.add("flex");
       }
 
       function fecharEncaminhamento() {
-        document.getElementById('modalEncaminhamento').style.display = 'none';
+        const modalEncaminhamento = document.getElementById('modalEncaminhamento');
+        modalEncaminhamento.classList.add("hidden");
+        modalEncaminhamento.classList.remove("flex");
         // Limpa campos
         document.getElementById('medicoDestino').value = '';
         document.getElementById('motivoEncaminhamento').value = '';
@@ -947,7 +957,9 @@
           document.getElementById('btnChamarProximo').disabled = false;
           
           // Oculta ações
-          document.getElementById('acoesPaciente').style.display = 'none';
+          const acoesPaciente2 = document.getElementById('acoesPaciente');
+          acoesPaciente2.classList.add("hidden");
+          acoesPaciente2.classList.remove("block");
           
           // Redirecionar para o painel público mostrando o encaminhamento
           setTimeout(() => {
