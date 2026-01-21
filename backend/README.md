@@ -18,17 +18,16 @@ Este diretório contém um backend **Node.js/Express** mínimo, compatível com 
 
 ## Banco de dados
 
-Em produção (Railway), use **PostgreSQL**. O Railway fornece a variável `DATABASE_URL` automaticamente quando você adiciona um Postgres ao projeto.
+Por padrão o backend usa **SQLite** (arquivo local).
+
+⚠️ **Atenção no Railway**: o arquivo SQLite pode **não ser persistente** entre deploys/restarts dependendo da configuração do serviço.  
+Se você precisa “guardar tudo” com garantia de persistência, o recomendado é usar um banco gerenciado (ex.: Postgres).
 
 ## Rodar local
 
 ```bash
 cd backend
 npm install
-
-# necessário ter DATABASE_URL definido (Postgres)
-# exemplo:
-# export DATABASE_URL='postgres://user:pass@localhost:5432/safe_atendimento'
 
 npm run start
 ```

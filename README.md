@@ -25,7 +25,8 @@ Para usar **front + back juntos no Railway** (e gerar um domínio `*.up.railway.
 - **Start (Railway)**: `npm start`
 - **Domínio**: Settings → Domains → Generate Domain
 - **Teste**: `https://SEU-DOMINIO.up.railway.app/health` (deve retornar `{ ok: true }`)
-- **Banco (recomendado)**: adicione um **PostgreSQL** no Railway (isso cria `DATABASE_URL` e garante persistência do histórico)
+- **Banco (padrão)**: SQLite (arquivo local).
+  - **Importante**: no Railway, SQLite pode não ser persistente entre deploys/restarts. Se precisar “guardar tudo” com garantia, use Postgres.
 
 - Como rodar e publicar no Railway: veja `backend/README.md`
 - Como apontar o frontend para outra API (se necessário): use `js/config.js` (via `localStorage` ou `?apiBase=...`)

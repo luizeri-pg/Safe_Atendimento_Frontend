@@ -1,83 +1,85 @@
-import pg from "pg";
+import sqlite3 from "sqlite3";
 
-const { Pool } = pg;
+sqlite3.verbose();
 
-export function createPool() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error(
-      "DATABASE_URL não definido. No Railway, adicione um Postgres (plugin) para gerar automaticamente."
-    );
-  }
-
-  // Railway frequentemente exige SSL. Em alguns casos, rejectUnauthorized precisa ser false.
-  const ssl =
-    process.env.PGSSLMODE === "disable"
-      ? false
-      : { rejectUnauthorized: false };
-
-  return new Pool({ connectionString, ssl });
+export function openDb(dbPath) {
+  return new sqlite3.Database(dbPath);
 }
 
-export async function initDb(pool) {
-  // Schema
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS senhas (
-      id BIGSERIAL PRIMARY KEY,
-      senha TEXT UNIQUE NOT NULL,
-      nome TEXT,
-      cpf TEXT,
-      status TEXT NOT NULL DEFAULT 'cadastro',
-      data TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      encaminhamento_json JSONB,
-      medicoAtendendo TEXT,
-      medicoAtendendoEmail TEXT
-    );
-  `);
+export function initDb(db) {
+  db.serialize(() => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS senhas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        senha TEXT UNIQUE NOT NULL,
+        nome TEXT,
+        cpf TEXT,
+        status TEXT NOT NULL DEFAULT 'cadastro',
+        data TEXT NOT NULL,
+        encaminhamento_json TEXT,
+        medicoAtendendo TEXT,
+        medicoAtendendoEmail TEXT
+      )
+    `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id BIGSERIAL PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      senha TEXT NOT NULL,
-      role TEXT NOT NULL,
-      nome TEXT
-    );
-  `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        senha TEXT NOT NULL,
+        role TEXT NOT NULL,
+        nome TEXT
+      )
+    `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS exames (
-      id BIGSERIAL PRIMARY KEY,
-      senha TEXT NOT NULL,
-      medico TEXT,
-      especialidade TEXT,
-      tipoExame TEXT NOT NULL,
-      resultado TEXT,
-      observacoes TEXT,
-      data TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CONSTRAINT fk_exames_senha FOREIGN KEY (senha) REFERENCES senhas(senha)
+    // Seed mínimo (para o login do front funcionar sem depender de outro sistema)
+    db.run(
+      `INSERT OR IGNORE INTO usuarios (email, senha, role, nome) VALUES
+        ('medico@safe.com', 'senha123', 'medico', 'Dr. João Silva'),
+        ('medico2@safe.com', 'senha123', 'medico', 'Dra. Maria Santos'),
+        ('atendente@safe.com', 'senha123', 'atendente', 'Atendente')`
     );
-  `);
 
-  // Seed mínimo (idempotente)
-  await pool.query(
-    `
-    INSERT INTO usuarios (email, senha, role, nome) VALUES
-      ('medico@safe.com', 'senha123', 'medico', 'Dr. João Silva'),
-      ('medico2@safe.com', 'senha123', 'medico', 'Dra. Maria Santos'),
-      ('atendente@safe.com', 'senha123', 'atendente', 'Atendente')
-    ON CONFLICT (email) DO NOTHING;
-  `
-  );
+    db.run(`
+      CREATE TABLE IF NOT EXISTS exames (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        senha TEXT NOT NULL,
+        medico TEXT,
+        especialidade TEXT,
+        tipoExame TEXT NOT NULL,
+        resultado TEXT,
+        observacoes TEXT,
+        data TEXT NOT NULL,
+        FOREIGN KEY (senha) REFERENCES senhas(senha)
+      )
+    `);
+  });
 }
 
-export async function one(pool, text, params = []) {
-  const res = await pool.query(text, params);
-  return res.rows[0] || null;
+export function run(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) return reject(err);
+      resolve({ changes: this.changes, lastID: this.lastID });
+    });
+  });
 }
 
-export async function many(pool, text, params = []) {
-  const res = await pool.query(text, params);
-  return res.rows;
+export function all(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+}
+
+export function get(db, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
 }
 
