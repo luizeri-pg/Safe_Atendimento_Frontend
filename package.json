@@ -1,13 +1,16 @@
 {
-  "name": "safe-atendimento-frontend",
+  "name": "safe-atendimento",
   "version": "1.0.0",
-  "description": "Aplicação web frontend para o sistema Safe Atendimento",
-  "main": "index.html",
+  "description": "Aplicação web frontend + backend para o sistema Safe Atendimento",
+  "private": true,
+  "type": "module",
+  "main": "backend/src/index.js",
+  "workspaces": [
+    "backend"
+  ],
   "scripts": {
-    "start": "python3 -m http.server 8000",
-    "serve": "python3 -m http.server 8000",
-    "dev": "python3 -m http.server 8000",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node backend/src/index.js",
+    "dev": "node --watch backend/src/index.js"
   },
   "repository": {
     "type": "git",

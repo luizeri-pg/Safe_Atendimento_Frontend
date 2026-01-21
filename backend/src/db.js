@@ -16,9 +16,29 @@ export function initDb(db) {
         cpf TEXT,
         status TEXT NOT NULL DEFAULT 'cadastro',
         data TEXT NOT NULL,
-        encaminhamento_json TEXT
+        encaminhamento_json TEXT,
+        medicoAtendendo TEXT,
+        medicoAtendendoEmail TEXT
       )
     `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        senha TEXT NOT NULL,
+        role TEXT NOT NULL,
+        nome TEXT
+      )
+    `);
+
+    // Seed mínimo (para o login do front funcionar sem depender de outro sistema)
+    db.run(
+      `INSERT OR IGNORE INTO usuarios (email, senha, role, nome) VALUES
+        ('medico@safe.com', 'senha123', 'medico', 'Dr. João Silva'),
+        ('medico2@safe.com', 'senha123', 'medico', 'Dra. Maria Santos'),
+        ('atendente@safe.com', 'senha123', 'atendente', 'Atendente')`
+    );
 
     db.run(`
       CREATE TABLE IF NOT EXISTS exames (

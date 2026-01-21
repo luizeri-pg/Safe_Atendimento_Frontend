@@ -10,8 +10,9 @@
                        window.location.hostname === '127.0.0.1' ||
                        window.location.hostname === '';
     
-    // Default (mantém compatibilidade com o projeto)
-    const DEFAULT_RAILWAY_BASE = 'https://safeatendimento-production.up.railway.app';
+    // Default em produção: mesmo domínio onde o frontend está rodando
+    // (quando front+back estão no mesmo serviço no Railway)
+    const DEFAULT_PROD_BASE = window.location.origin;
     
     // Overridable base (sem /api)
     let overrideBase = null;
@@ -24,7 +25,7 @@
     
     const chosenBase = (overrideBase && String(overrideBase).trim())
         ? String(overrideBase).trim().replace(/\/+$/, '')
-        : (isLocalhost ? 'http://localhost:3000' : DEFAULT_RAILWAY_BASE);
+        : (isLocalhost ? 'http://localhost:3000' : DEFAULT_PROD_BASE);
     
     // URL base da API (com /api)
     const API_BASE_URL = chosenBase.endsWith('/api') ? chosenBase : `${chosenBase}/api`;
