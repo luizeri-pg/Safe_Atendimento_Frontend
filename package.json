@@ -12,6 +12,9 @@
     "start": "node backend/src/index.js",
     "dev": "node --watch backend/src/index.js"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/luizeri-pg/Safe_Atendimento_Frontend.git"
