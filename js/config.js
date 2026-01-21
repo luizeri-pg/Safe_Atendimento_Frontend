@@ -1,4 +1,7 @@
-// Configuração da API - detecta automaticamente se deve usar backend local ou Railway
+// Configuração da API (Railway) + override por querystring/localStorage
+// - Override (sem redeploy do front):
+//    1) Querystring: ?apiBase=https://SEU-SERVICO.up.railway.app
+//    2) LocalStorage: localStorage.setItem('SAFE_API_BASE', 'https://SEU-SERVICO.up.railway.app')
 (function() {
     'use strict';
     
@@ -7,10 +10,24 @@
                        window.location.hostname === '127.0.0.1' ||
                        window.location.hostname === '';
     
-    // URL base da API
-    const API_BASE_URL = isLocalhost 
-        ? 'http://localhost:3000/api'  // Backend local (ajuste a porta se necessário)
-        : 'https://safeatendimento-production.up.railway.app/api';  // Backend Railway
+    // Default (mantém compatibilidade com o projeto)
+    const DEFAULT_RAILWAY_BASE = 'https://safeatendimento-production.up.railway.app';
+    
+    // Overridable base (sem /api)
+    let overrideBase = null;
+    try {
+        const qs = new URLSearchParams(window.location.search);
+        overrideBase = qs.get('apiBase') || window.localStorage.getItem('SAFE_API_BASE');
+    } catch (e) {
+        overrideBase = null;
+    }
+    
+    const chosenBase = (overrideBase && String(overrideBase).trim())
+        ? String(overrideBase).trim().replace(/\/+$/, '')
+        : (isLocalhost ? 'http://localhost:3000' : DEFAULT_RAILWAY_BASE);
+    
+    // URL base da API (com /api)
+    const API_BASE_URL = chosenBase.endsWith('/api') ? chosenBase : `${chosenBase}/api`;
     
     // Função para obter URL do SOC com data
     function getSOCUrl(data) {
