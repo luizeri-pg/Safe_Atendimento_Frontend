@@ -16,11 +16,20 @@ Este diretório contém um backend **Node.js/Express** mínimo, compatível com 
 - `POST /api/exames`
 - `POST /api/encaminhamento`
 
+## Banco de dados
+
+Em produção (Railway), use **PostgreSQL**. O Railway fornece a variável `DATABASE_URL` automaticamente quando você adiciona um Postgres ao projeto.
+
 ## Rodar local
 
 ```bash
 cd backend
 npm install
+
+# necessário ter DATABASE_URL definido (Postgres)
+# exemplo:
+# export DATABASE_URL='postgres://user:pass@localhost:5432/safe_atendimento'
+
 npm run start
 ```
 
@@ -31,9 +40,7 @@ Backend local em `http://127.0.0.1:3000`.
 1. Suba este projeto para um repositório Git (ex.: GitHub).
 2. No Railway: **New Project → Deploy from GitHub repo**.
 3. Selecione o repositório.
-4. Em **Settings** do serviço:
-   - **Root Directory**: `backend`
-   - **Start Command**: `npm run start`
+4. Adicione um **PostgreSQL**: **New → Database → Add PostgreSQL** (isso cria `DATABASE_URL`).
 5. Em **Settings → Domains**, clique em **Generate Domain**.
 
 Isso vai criar um domínio tipo `https://SEU-SERVICO.up.railway.app`.

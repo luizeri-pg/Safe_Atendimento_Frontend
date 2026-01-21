@@ -4,14 +4,13 @@ import helmet from "helmet";
 import morgan from "morgan";
 import path from "path";
 import { fileURLToPath } from "url";
-import { all, get, initDb, openDb, run } from "./db.js";
+import { createPool, initDb, many, one } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
 const PORT = Number(process.env.PORT || 3000);
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "..", "data.sqlite");
 
 const app = express();
 app.disable("x-powered-by");
@@ -39,8 +38,8 @@ app.use(
   })
 );
 
-const db = openDb(DB_PATH);
-initDb(db);
+const db = createPool();
+await initDb(db);
 
 function nowIso() {
   return new Date().toISOString();
@@ -59,15 +58,8 @@ function normalizeCpf(cpf) {
 function parseEncaminhamento(row) {
   if (!row) return row;
   const copy = { ...row };
-  if (copy.encaminhamento_json) {
-    try {
-      copy.encaminhamento = JSON.parse(copy.encaminhamento_json);
-    } catch {
-      copy.encaminhamento = null;
-    }
-  } else {
-    copy.encaminhamento = null;
-  }
+  // No Postgres é JSONB, então já vem como objeto
+  copy.encaminhamento = copy.encaminhamento_json ?? null;
   delete copy.encaminhamento_json;
   return copy;
 }
@@ -86,9 +78,9 @@ app.post("/api/usuarios/login", async (req, res) => {
       return res.status(400).json({ message: "Email, senha e role são obrigatórios" });
     }
 
-    const user = await get(
+    const user = await one(
       db,
-      `SELECT id, email, role, nome FROM usuarios WHERE email = ? AND senha = ? AND role = ?`,
+      `SELECT id, email, role, nome FROM usuarios WHERE email = $1 AND senha = $2 AND role = $3`,
       [email, senha, role]
     );
 
@@ -102,7 +94,7 @@ app.post("/api/usuarios/login", async (req, res) => {
 // Lista de usuários (opcional; sem senha)
 app.get("/api/usuarios", async (_req, res) => {
   try {
-    const users = await all(db, `SELECT id, email, role, nome FROM usuarios ORDER BY id DESC`);
+    const users = await many(db, `SELECT id, email, role, nome FROM usuarios ORDER BY id DESC`);
     res.json(users);
   } catch {
     res.status(500).json({ message: "Erro ao listar usuários" });
@@ -116,11 +108,11 @@ app.get("/api/soc", (_req, res) => res.json([]));
 // Listar todas as senhas
 app.get("/api/senhas", async (_req, res) => {
   try {
-    const rows = await all(
+    const rows = await many(
       db,
       `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
        FROM senhas
-       ORDER BY datetime(data) DESC`
+       ORDER BY data DESC`
     );
     res.json(rows.map(parseEncaminhamento));
   } catch (e) {
@@ -131,11 +123,11 @@ app.get("/api/senhas", async (_req, res) => {
 // Senhas recentes (últimas 10)
 app.get("/api/senhas/recentes", async (_req, res) => {
   try {
-    const rows = await all(
+    const rows = await many(
       db,
       `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
        FROM senhas
-       ORDER BY datetime(data) DESC
+       ORDER BY data DESC
        LIMIT 10`
     );
     res.json(rows.map(parseEncaminhamento));
@@ -147,11 +139,11 @@ app.get("/api/senhas/recentes", async (_req, res) => {
 // Histórico (por enquanto: todas do dia; se quiser, filtre por data local)
 app.get("/api/senhas/historico", async (_req, res) => {
   try {
-    const rows = await all(
+    const rows = await many(
       db,
       `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
        FROM senhas
-       ORDER BY datetime(data) DESC`
+       ORDER BY data DESC`
     );
     res.json(rows.map(parseEncaminhamento));
   } catch {
@@ -171,18 +163,18 @@ app.post("/api/senhas", async (req, res) => {
     // Se não vier nome/cpf, mantém status cadastro; se vier, pendente (fila)
     const status = nome ? "pendente" : "cadastro";
 
-    await run(
-      db,
-      `INSERT OR IGNORE INTO senhas (senha, nome, cpf, status, data, encaminhamento_json)
-       VALUES (?, ?, ?, ?, ?, NULL)`,
+    await db.query(
+      `INSERT INTO senhas (senha, nome, cpf, status, data, encaminhamento_json)
+       VALUES ($1, $2, $3, $4, $5, NULL)
+       ON CONFLICT (senha) DO NOTHING`,
       [senha, nome, cpf, status, nowIso()]
     );
 
     // Retorna o registro atual
-    const row = await get(
+    const row = await one(
       db,
       `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
-       FROM senhas WHERE senha = ?`,
+       FROM senhas WHERE senha = $1`,
       [senha]
     );
 
@@ -198,7 +190,7 @@ app.patch("/api/senhas/:senha", async (req, res) => {
     const senha = normalizeSenha(req.params.senha);
     if (!senha) return res.status(400).json({ error: "Senha inválida" });
 
-    const existing = await get(db, `SELECT * FROM senhas WHERE senha = ?`, [senha]);
+    const existing = await one(db, `SELECT * FROM senhas WHERE senha = $1`, [senha]);
     if (!existing) return res.status(404).json({ error: "Senha não encontrada" });
 
     const nome = req.body?.nome != null ? String(req.body.nome).trim() : undefined;
@@ -219,51 +211,55 @@ app.patch("/api/senhas/:senha", async (req, res) => {
 
     const updates = [];
     const params = [];
+    let idx = 1;
 
     if (nome !== undefined) {
-      updates.push("nome = ?");
+      updates.push(`nome = $${idx++}`);
       params.push(nome);
       // se preencheu nome e estava em cadastro, promove a pendente
       if ((existing.status === "cadastro" || !existing.status) && status === undefined) {
-        updates.push("status = ?");
+        updates.push(`status = $${idx++}`);
         params.push("pendente");
       }
     }
     if (cpf !== undefined) {
-      updates.push("cpf = ?");
+      updates.push(`cpf = $${idx++}`);
       params.push(cpf);
       if ((existing.status === "cadastro" || !existing.status) && status === undefined) {
-        updates.push("status = ?");
+        updates.push(`status = $${idx++}`);
         params.push("pendente");
       }
     }
     if (status !== undefined) {
-      updates.push("status = ?");
+      updates.push(`status = $${idx++}`);
       params.push(status);
     }
     if (medicoAtendendo !== undefined) {
-      updates.push("medicoAtendendo = ?");
+      updates.push(`medicoAtendendo = $${idx++}`);
       params.push(medicoAtendendo);
     }
     if (medicoAtendendoEmail !== undefined) {
-      updates.push("medicoAtendendoEmail = ?");
+      updates.push(`medicoAtendendoEmail = $${idx++}`);
       params.push(medicoAtendendoEmail);
     }
     if (encaminhamento !== undefined) {
-      updates.push("encaminhamento_json = ?");
-      params.push(JSON.stringify(encaminhamento));
+      updates.push(`encaminhamento_json = $${idx++}::jsonb`);
+      params.push(encaminhamento);
     }
 
     // sempre atualiza data (para ordenação do painel)
-    updates.push("data = ?");
+    updates.push(`data = $${idx++}`);
     params.push(nowIso());
 
-    await run(db, `UPDATE senhas SET ${updates.join(", ")} WHERE senha = ?`, [...params, senha]);
+    await db.query(
+      `UPDATE senhas SET ${updates.join(", ")} WHERE senha = $${idx}`,
+      [...params, senha]
+    );
 
-    const row = await get(
+    const row = await one(
       db,
       `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
-       FROM senhas WHERE senha = ?`,
+       FROM senhas WHERE senha = $1`,
       [senha]
     );
     res.json(parseEncaminhamento(row));
@@ -281,23 +277,26 @@ app.post("/api/usuarios", async (req, res) => {
     if (!senha) return res.status(400).json({ error: "Campo 'senha' é obrigatório" });
 
     // Garante que a senha exista e já fica pendente
-    await run(
-      db,
-      `INSERT OR IGNORE INTO senhas (senha, nome, cpf, status, data, encaminhamento_json)
-       VALUES (?, ?, ?, 'pendente', ?, NULL)`,
+    await db.query(
+      `INSERT INTO senhas (senha, nome, cpf, status, data, encaminhamento_json)
+       VALUES ($1, $2, $3, 'pendente', $4, NULL)
+       ON CONFLICT (senha) DO NOTHING`,
       [senha, nome, cpf, nowIso()]
     );
-    await run(
-      db,
-      `UPDATE senhas SET nome = COALESCE(?, nome), cpf = COALESCE(?, cpf), status = 'pendente', data = ?
-       WHERE senha = ?`,
+    await db.query(
+      `UPDATE senhas SET
+        nome = COALESCE($1, nome),
+        cpf = COALESCE($2, cpf),
+        status = 'pendente',
+        data = $3
+       WHERE senha = $4`,
       [nome, cpf, nowIso(), senha]
     );
 
-    const row = await get(
+    const row = await one(
       db,
-      `SELECT senha, nome, cpf, status, data, encaminhamento_json
-       FROM senhas WHERE senha = ?`,
+      `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
+       FROM senhas WHERE senha = $1`,
       [senha]
     );
     res.status(201).json(parseEncaminhamento(row));
@@ -310,12 +309,12 @@ app.post("/api/usuarios", async (req, res) => {
 app.get("/api/exames/:senha", async (req, res) => {
   try {
     const senha = normalizeSenha(req.params.senha);
-    const rows = await all(
+    const rows = await many(
       db,
       `SELECT senha, medico, especialidade, tipoExame, resultado, observacoes, data
        FROM exames
-       WHERE senha = ?
-       ORDER BY datetime(data) DESC`,
+       WHERE senha = $1
+       ORDER BY data DESC`,
       [senha]
     );
     res.json(rows);
@@ -337,10 +336,9 @@ app.post("/api/exames", async (req, res) => {
     if (!senha) return res.status(400).json({ error: "Campo 'senha' é obrigatório" });
     if (!tipoExame) return res.status(400).json({ error: "Campo 'tipoExame' é obrigatório" });
 
-    await run(
-      db,
+    await db.query(
       `INSERT INTO exames (senha, medico, especialidade, tipoExame, resultado, observacoes, data)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [senha, medico, especialidade, tipoExame, resultado, observacoes, nowIso()]
     );
 
@@ -361,7 +359,7 @@ app.post("/api/encaminhamento", async (req, res) => {
     if (!senha) return res.status(400).json({ error: "Campo 'senha' é obrigatório" });
     if (!medicoDestino) return res.status(400).json({ error: "Campo 'medicoDestino' é obrigatório" });
 
-    const existing = await get(db, `SELECT senha FROM senhas WHERE senha = ?`, [senha]);
+    const existing = await one(db, `SELECT senha FROM senhas WHERE senha = $1`, [senha]);
     if (!existing) return res.status(404).json({ error: "Senha não encontrada" });
 
     const payload = {
@@ -371,18 +369,17 @@ app.post("/api/encaminhamento", async (req, res) => {
       data: nowIso()
     };
 
-    await run(
-      db,
+    await db.query(
       `UPDATE senhas
-       SET encaminhamento_json = ?, status = 'pendente', data = ?
-       WHERE senha = ?`,
-      [JSON.stringify(payload), nowIso(), senha]
+       SET encaminhamento_json = $1::jsonb, status = 'pendente', data = $2
+       WHERE senha = $3`,
+      [payload, nowIso(), senha]
     );
 
-    const row = await get(
+    const row = await one(
       db,
-      `SELECT senha, nome, cpf, status, data, encaminhamento_json
-       FROM senhas WHERE senha = ?`,
+      `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
+       FROM senhas WHERE senha = $1`,
       [senha]
     );
     res.status(201).json(parseEncaminhamento(row));
@@ -395,6 +392,6 @@ app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`Safe Atendimento Backend rodando na porta ${PORT}`);
   // eslint-disable-next-line no-console
-  console.log(`DB: ${DB_PATH}`);
+  console.log(`DB: Postgres (DATABASE_URL)`);
 });
 
