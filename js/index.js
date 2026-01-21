@@ -16,7 +16,12 @@ function getSOCUrl(data) {
         return window.API_CONFIG.getSOC_URL(data);
     }
     // Fallback
-    const dataParam = data || new Date().toISOString().split('T')[0];
+    const hoje = new Date();
+    const yyyy = hoje.getFullYear();
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoje.getDate()).padStart(2, '0');
+    const hojeLocalISO = `${yyyy}-${mm}-${dd}`;
+    const dataParam = data || hojeLocalISO;
     return `${API_BASE_URL}/soc?data=${dataParam}`;
 }
 
@@ -67,6 +72,19 @@ function gerarSenhaSemAgendamento() {
 
 async function registrarSenhaSemAgendamento(senha) {
   try {
+    // Preferir Supabase quando configurado (totem não exige login; exige policy específica no Supabase se for usar em produção).
+    if (window.safeSupabase) {
+      const { error } = await window.safeSupabase.from('senhas').insert([
+        {
+          senha,
+          status: 'cadastro',
+          soc_status: 'nao_verificado'
+        }
+      ]);
+      if (error) throw error;
+      return true;
+    }
+
     const res = await fetch(`${API_BASE_URL}/senhas`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -117,17 +135,6 @@ function render() {
       <div class="text-gray-800 text-2xl mb-7 text-center bg-white/50 rounded-xl py-4">Por favor, aguarde ser chamado no painel.<br>Obrigado!</div>
       <button class="bg-gradient-to-r from-blue-500 to-secondary-500 text-white border-none rounded-xl py-6 px-14 text-2xl font-bold cursor-pointer mt-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 hover:scale-105 mx-auto block" onclick="voltarInicio()">Novo atendimento</button>
     `;
-  } else if (step === 4) {
-    // Tela para cadastrar pessoa não encontrada no SOC
-    app.innerHTML = `
-      <div class="text-gray-900 text-4xl font-bold mb-9 text-center tracking-wide">Digite seus dados</div>
-      <input class="w-[90%] mx-auto block py-6 px-12 rounded-xl border-none text-2xl mb-7 outline-auto bg-white/70 shadow-md transition-all duration-200 focus:shadow-lg focus:bg-white focus:shadow-blue-500/15 placeholder:text-gray-400" id="cpfCadastroInput" placeholder="CPF" maxlength="14" value="${window.cpfNaoEncontrado || ''}" />
-      <input class="w-[90%] mx-auto block py-6 px-12 rounded-xl border-none text-2xl mb-7 outline-auto bg-white/70 shadow-md transition-all duration-200 focus:shadow-lg focus:bg-white focus:shadow-blue-500/15 placeholder:text-gray-400" id="nomeInput" placeholder="Nome completo" />
-      <button class="bg-gradient-to-r from-blue-500 to-secondary-500 text-white border-none rounded-xl py-6 px-14 text-2xl font-bold cursor-pointer mt-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 hover:scale-105 mx-auto block" onclick="confirmarCadastro()">Confirmar e gerar senha</button>
-      <button class="bg-transparent text-blue-500 border-2 border-blue-500 rounded-xl py-6 px-14 mx-9 mt-4 text-2xl font-bold cursor-pointer w-[90%] block transition-all duration-200 hover:bg-blue-50 hover:text-secondary-500 hover:border-secondary-500" onclick="voltarInicio()">Voltar</button>
-      <div class="text-red-500 mt-5 text-2xl text-center bg-white/70 rounded-lg py-2" id="erroCadastro"></div>
-    `;
-    document.getElementById("nomeInput").focus();
   }
 }
 
@@ -150,10 +157,22 @@ async function buscarPorCPF() {
   if (consultasSOC.length === 0) {
     try {
       // Buscar SOC com data de hoje
-      const hoje = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const d = new Date();
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hoje = `${yyyy}-${mm}-${dd}`; // YYYY-MM-DD (data local)
       const socUrl = getSOCUrl(hoje);
       const res = await fetch(socUrl);
-      consultasSOC = await res.json();
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        consultasSOC = data;
+      } else if (window.API_CONFIG?.extractFirstArray) {
+        consultasSOC = window.API_CONFIG.extractFirstArray(data) || [];
+      } else {
+        // fallback bem simples
+        consultasSOC = [];
+      }
     } catch (e) {
       erroDiv.innerText = "Erro ao buscar dados do SOC.";
       return;
@@ -170,10 +189,39 @@ async function buscarPorCPF() {
   });
 
   if (consultasPaciente.length === 0) {
-    // CPF não encontrado no SOC - vai para tela de cadastro
-    window.cpfNaoEncontrado = cpf;
-    step = 4;
-    render();
+    // CPF não encontrado no SOC - gera senha e registra (sem nome).
+    const cpfCadastro = cpfLimpo || cpf;
+    const senhaGerada = gerarSenhaSemAgendamento();
+    try {
+      if (window.safeSupabase) {
+        const { error } = await window.safeSupabase.from('senhas').insert([
+          {
+            senha: senhaGerada,
+            cpf: cpfCadastro,
+            status: 'cadastro',
+            soc_status: 'nao_verificado'
+          }
+        ]);
+        if (error) throw error;
+      } else {
+        const res = await fetch(`${API_BASE_URL}/senhas`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senha: senhaGerada,
+            cpf: cpfCadastro
+          })
+        });
+        if (!res.ok) throw new Error("Falha ao registrar senha");
+      }
+
+      senha = senhaGerada;
+      step = 3;
+      render();
+    } catch (e) {
+      erroDiv.innerText = "Erro ao gerar senha. Tente novamente.";
+      return;
+    }
   } else {
     // CPF encontrado - mostra dados do agendamento
     paciente = consultasPaciente[0];
@@ -183,56 +231,34 @@ async function buscarPorCPF() {
   }
 }
 
-async function confirmarCadastro() {
-  const nome = document.getElementById("nomeInput").value.trim();
-  const cpf = document.getElementById("cpfCadastroInput").value.trim();
-  const erroCadastroDiv = document.getElementById("erroCadastro");
-  
-  if (!nome || !cpf) {
-    erroCadastroDiv.innerText = "Preencha todos os campos.";
-    return;
-  }
-
-  // Gera senha para pessoa sem agendamento (com 'S')
-  const senhaGerada = gerarSenhaSemAgendamento();
-  
-  try {
-    const res = await fetch(`${API_BASE_URL}/senhas`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        senha: senhaGerada,
-        nome: nome,
-        cpf: cpf
-      })
-    });
-    
-    if (res.ok) {
-      senha = senhaGerada;
-      step = 3;
-      render();
-    } else {
-      erroCadastroDiv.innerText = "Erro ao gerar senha. Tente novamente.";
-    }
-  } catch (e) {
-    erroCadastroDiv.innerText = "Erro ao gerar senha. Tente novamente.";
-  }
-}
-
 async function confirmarAtendimento() {
   // Usa o código do funcionário do SOC como senha
   senha = paciente.CODIGOFUNCIONARIO || "N/A";
 
   try {
-    await fetch(`${API_BASE_URL}/senhas`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        senha: senha,
-        nome: paciente.NOMEFUNCIONARIO,
-        cpf: paciente.CPFFUNCIONARIO,
-      }),
-    });
+    // Para totem, gravamos somente como "cadastro" (atendente valida/triagem e libera).
+    // Em produção, se quiser gravar nome/CPF direto, crie policy específica e avalie LGPD/privacidade.
+    if (window.safeSupabase) {
+      const { error } = await window.safeSupabase.from('senhas').insert([
+        {
+          senha: String(senha),
+          cpf: String(paciente.CPFFUNCIONARIO || '').replace(/\D/g, ''),
+          status: 'cadastro',
+          soc_status: 'encontrado'
+        }
+      ]);
+      if (error) throw error;
+    } else {
+      await fetch(`${API_BASE_URL}/senhas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senha: senha,
+          nome: paciente.NOMEFUNCIONARIO,
+          cpf: paciente.CPFFUNCIONARIO,
+        }),
+      });
+    }
     // erro silencioso
   } catch (e) {
     // erro silencioso
@@ -247,7 +273,6 @@ function voltarInicio() {
   senha = "";
   paciente = null;
   consulta = null;
-  window.cpfNaoEncontrado = null;
   render();
 }
 
@@ -255,7 +280,6 @@ function voltarInicioSemAgendamento() {
   step = 0;
   window.senhaSemAgendamentoAtual = null;
   window.senhaSemAgendamentoRegistrada = false;
-  window.cpfNaoEncontrado = null;
   render();
 }
 
@@ -335,7 +359,6 @@ function confirmarESalvarSenhaSemAgendamento() {
 window.proximoPasso = proximoPasso;
 window.buscarPorCPF = buscarPorCPF;
 window.confirmarAtendimento = confirmarAtendimento;
-window.confirmarCadastro = confirmarCadastro;
 window.voltarInicio = voltarInicio;
 window.voltarInicioSemAgendamento = voltarInicioSemAgendamento;
 window.abrirCadastroAtendente = abrirCadastroAtendente;

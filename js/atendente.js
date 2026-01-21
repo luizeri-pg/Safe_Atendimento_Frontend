@@ -15,26 +15,75 @@
       }
       
       const API_URL = getAPIUrl();
+
+      // Guard de acesso: atendente não pode acessar painel do médico e vice-versa
+      (function enforceAtendente() {
+        try {
+          const logged = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+          if (!logged?.role || logged.role !== 'atendente') {
+            // Evita acesso cruzado
+            window.location.href = 'login.html';
+          }
+        } catch {
+          window.location.href = 'login.html';
+        }
+      })();
       
       let senhaParaCadastro = null;
       let senhaParaEditar = null;
 
       async function carregarSenhas() {
         try {
-          const res = await fetch(API_URL);
-          const senhas = await res.json();
+          let senhas = [];
+          if (window.safeSupabase) {
+            const { data, error } = await window.safeSupabase
+              .from('senhas')
+              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
+              .in('status', ['cadastro', 'pendente'])
+              .is('medico_atendendo_id', null)
+              .order('updated_at', { ascending: false });
+            if (error) throw error;
+            senhas = (Array.isArray(data) ? data : []).map((s) => ({
+              senha: s.senha,
+              nome: s.nome,
+              cpf: s.cpf,
+              status: s.status,
+              data: s.updated_at || s.created_at,
+              encaminhamento: s.encaminhamento || null,
+              medicoAtendendo: null,
+              medicoAtendendoEmail: null
+            }));
+          } else {
+            const res = await fetch(API_URL);
+            senhas = await res.json();
+          }
           const lista = document.getElementById("senhaLista");
           const semSenhas = document.getElementById("semSenhas");
           lista.innerHTML = "";
           
-          if (senhas.length === 0) {
+          const visiveis = (Array.isArray(senhas) ? senhas : []).filter((s) => {
+            const status = s?.status ? String(s.status).trim() : "";
+            const nome = String(s?.nome || "");
+            const temMarcadorAtendimento = / \[EM ATENDIMENTO - .+?\]$/.test(nome);
+            const temMedicoAtendendo =
+              s?.medicoAtendendo != null && String(s.medicoAtendendo).trim().length > 0;
+
+            // No painel do atendente NÃO mostramos pacientes já "chamados"/em atendimento
+            if (status === "em_atendimento") return false;
+            if (temMarcadorAtendimento || temMedicoAtendendo) return false;
+
+            // Mostramos somente: cadastros (sem nome) e pendentes (fila)
+            return status === "cadastro" || status === "pendente";
+          });
+
+          if (visiveis.length === 0) {
             semSenhas.classList.remove("hidden");
             semSenhas.classList.add("block");
           } else {
             semSenhas.classList.add("hidden");
             semSenhas.classList.remove("block");
             
-            senhas.forEach((s) => {
+            visiveis.forEach((s) => {
               const item = document.createElement("div");
               item.className = "senha-item bg-white rounded-2xl p-6 flex items-center justify-between shadow-md border border-black/5 transition-all duration-300 relative overflow-hidden hover:-translate-y-0.5 hover:shadow-xl md:flex-row flex-col gap-4 text-center md:text-left";
               
@@ -52,7 +101,11 @@
                 <div class="senha-info flex items-center gap-5 flex-1">
                   <div class="senha-numero text-3xl font-extrabold text-blue-500 min-w-[80px] text-center">${s.senha}</div>
                   <div class="senha-details flex-1">
-                    <div class="senha-nome text-lg font-semibold text-gray-800 mb-1">${s.nome || "Sem agendamento"}</div>
+                    <div class="senha-nome text-lg font-semibold text-gray-800 mb-1">${
+                      s.nome
+                        ? String(s.nome).replace(/ \[EM ATENDIMENTO - .+?\]$/, '')
+                        : (s.cpf ? `Sem nome (CPF: ${s.cpf})` : "Sem nome")
+                    }</div>
                     <div class="senha-status text-sm text-gray-500 font-medium">${statusBadge}</div>
                   </div>
                 </div>
@@ -73,12 +126,16 @@
                 const btnCadastro = document.createElement("button");
                 btnCadastro.className = "btn-cadastrar bg-gradient-to-br from-blue-500 to-blue-700 text-white border-none rounded-xl py-3 px-6 text-sm font-semibold cursor-pointer transition-all duration-300 shadow-lg shadow-blue-500/30 whitespace-nowrap hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/40";
                 btnCadastro.innerHTML = '<i class="fas fa-user-plus"></i> Cadastrar';
-                btnCadastro.onclick = () => abrirModalCadastro(s.senha);
+                btnCadastro.onclick = () => abrirModalCadastro(s.senha, s.cpf);
                 actionsDiv.appendChild(btnCadastro);
               }
               
               // Botão Atender só se status for pendente E nome preenchido
-              if (s.status === "pendente" && s.nome && s.nome !== "Sem agendamento") {
+              // (e não estiver em atendimento)
+              const nomeTemMarcador = / \[EM ATENDIMENTO - .+?\]$/.test(String(s.nome || ''));
+              const temMedicoAtendendo =
+                s?.medicoAtendendo != null && String(s.medicoAtendendo).trim().length > 0;
+              if (s.status === "pendente" && s.nome && s.nome !== "Sem agendamento" && !nomeTemMarcador && !temMedicoAtendendo) {
                 const btn = document.createElement("button");
                 btn.className = "btn-atender bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-sm font-semibold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 whitespace-nowrap hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40";
                 btn.innerHTML = '<i class="fas fa-check"></i> Atender';
@@ -120,13 +177,17 @@
         }
       }
       // Modal de cadastro
-      function abrirModalCadastro(senha) {
+      function abrirModalCadastro(senha, cpfAtual) {
         senhaParaCadastro = senha;
         const modalBg = document.getElementById("modalBg");
         modalBg.classList.remove("hidden");
         modalBg.classList.add("flex");
         document.getElementById("inputNome").value = "";
-        document.getElementById("inputCpf").value = "";
+        const inputCpf = document.getElementById("inputCpf");
+        inputCpf.value = cpfAtual || "";
+        // Se o CPF já veio do totém, não precisa digitar de novo
+        inputCpf.readOnly = Boolean(cpfAtual);
+        inputCpf.classList.toggle('opacity-60', Boolean(cpfAtual));
       }
       
       // Modal de editar nome
@@ -155,15 +216,25 @@
         const nome = document.getElementById("inputNome").value.trim();
         const cpf = document.getElementById("inputCpf").value.trim();
         if (!nome || !cpf) return;
-        // Atualiza senha no backend (PATCH para adicionar nome/cpf e mudar status para pendente)
-        await fetch(
-          `${API_URL}/${encodeURIComponent(senhaParaCadastro)}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nome, cpf }),
-          }
-        );
+        if (window.safeSupabase) {
+          const { error } = await window.safeSupabase.rpc('triar_senha', {
+            p_senha: senhaParaCadastro,
+            p_nome: nome,
+            p_cpf: cpf,
+            p_soc_status: 'nao_verificado'
+          });
+          if (error) throw error;
+        } else {
+          // Atualiza senha no backend (PATCH para adicionar nome/cpf e mudar status para pendente)
+          await fetch(
+            `${API_URL}/${encodeURIComponent(senhaParaCadastro)}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nome, cpf }),
+            }
+          );
+        }
         const modalBg = document.getElementById("modalBg");
         modalBg.classList.add("hidden");
         modalBg.classList.remove("flex");
@@ -175,15 +246,33 @@
         e.preventDefault();
         const nome = document.getElementById("inputNomeEditar").value.trim();
         if (!nome) return;
-        // Atualiza apenas o nome no backend
-        await fetch(
-          `${API_URL}/${encodeURIComponent(senhaParaEditar)}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nome }),
-          }
-        );
+        if (window.safeSupabase) {
+          // Reaproveita a RPC de triagem para atualizar nome mantendo CPF atual
+          const { data: row, error: rowErr } = await window.safeSupabase
+            .from('senhas')
+            .select('cpf,soc_status')
+            .eq('senha', senhaParaEditar)
+            .single();
+          if (rowErr) throw rowErr;
+
+          const { error } = await window.safeSupabase.rpc('triar_senha', {
+            p_senha: senhaParaEditar,
+            p_nome: nome,
+            p_cpf: row?.cpf || '',
+            p_soc_status: row?.soc_status || 'nao_verificado'
+          });
+          if (error) throw error;
+        } else {
+          // Atualiza apenas o nome no backend
+          await fetch(
+            `${API_URL}/${encodeURIComponent(senhaParaEditar)}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nome }),
+            }
+          );
+        }
         const modalBg = document.getElementById("modalEditarBg");
         modalBg.classList.add("hidden");
         modalBg.classList.remove("flex");

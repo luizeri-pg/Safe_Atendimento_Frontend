@@ -30,15 +30,38 @@
     // URL base da API (com /api)
     const API_BASE_URL = chosenBase.endsWith('/api') ? chosenBase : `${chosenBase}/api`;
     
-    // Função para obter URL do SOC com data
-    function getSOCUrl(data) {
-        // Se não passar data, usa data de hoje
-        if (!data) {
-            const hoje = new Date();
-            data = hoje.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+    function getHojeLocalISO() {
+        const hoje = new Date();
+        const yyyy = hoje.getFullYear();
+        const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+        const dd = String(hoje.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function extractFirstArray(value, maxDepth = 4) {
+        if (Array.isArray(value)) return value;
+        if (!value || typeof value !== 'object' || maxDepth <= 0) return null;
+
+        const preferredKeys = ['dados', 'data', 'registros', 'results', 'resultado', 'itens', 'items', 'lista', 'list'];
+        for (const k of preferredKeys) {
+            if (Object.prototype.hasOwnProperty.call(value, k)) {
+                const found = extractFirstArray(value[k], maxDepth - 1);
+                if (found) return found;
+            }
         }
-        // URL fixa do SOC com parâmetro de data
-        return `${API_BASE_URL}/soc?data=${data}`;
+
+        for (const v of Object.values(value)) {
+            const found = extractFirstArray(v, maxDepth - 1);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // Função para obter URL do SOC via backend (proxy).
+    // Motivo: o SOC não libera CORS para localhost/outros domínios, então o browser não consegue chamar direto.
+    function getSOCUrl(data) {
+        const iso = data ? String(data).trim() : getHojeLocalISO(); // YYYY-MM-DD (data local)
+        return `${API_BASE_URL}/soc?data=${encodeURIComponent(iso)}`;
     }
     
     // Expor configuração global
@@ -46,6 +69,7 @@
         BASE_URL: API_BASE_URL,
         getSOC_URL: getSOCUrl, // Função para obter URL do SOC com data
         SOC_BASE: `${API_BASE_URL}/soc`, // URL base do SOC (sem parâmetros)
+        extractFirstArray: extractFirstArray,
         SENHAS_URL: `${API_BASE_URL}/senhas`,
         USUARIOS_URL: `${API_BASE_URL}/usuarios`
     };

@@ -20,6 +20,17 @@ Abra os arquivos HTML diretamente no navegador ou configure um servidor web loca
 
 ## Rodar local (recomendado)
 
+### Configurar Supabase (.env) (opcional para testar)
+
+Se você quiser testar o frontend usando Supabase em localhost:
+
+1. Copie `ENV.example` para `.env` na raiz do repo
+2. Preencha:
+   - `SUPABASE_URL` (se necessário)
+   - `SUPABASE_ANON_KEY`
+
+O backend local lê esse `.env` usando `node --env-file=.env` e expõe os valores (somente `SUPABASE_URL` e `SUPABASE_ANON_KEY`) para o browser via `GET /js/supabaseEnv.js`.
+
 ### Pré-requisitos
 
 - Node.js **22.x** (o projeto inclui `.nvmrc` e `.mise.toml`)

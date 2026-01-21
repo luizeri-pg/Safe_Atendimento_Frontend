@@ -35,7 +35,14 @@ Crie um arquivo `.env` na raiz do projeto backend:
 ```env
 PORT=3000
 NODE_ENV=development
-# Adicione outras variáveis de ambiente necessárias
+# Integração SOC (exportadados) - preencha com seus valores
+SOC_EMPRESA=SEU_EMPRESA
+SOC_CODIGO=SEU_CODIGO
+SOC_CHAVE=SUA_CHAVE
+SOC_CODIGO_USUARIO_AGENDA=SEU_CODIGO_USUARIO_AGENDA
+# Opcional:
+# SOC_EXPORT_URL=https://ws1.soc.com.br/WebSoc/exportadados
+# SOC_TIMEZONE=America/Sao_Paulo
 ```
 
 ### 4. Rodar o Backend

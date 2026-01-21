@@ -13,14 +13,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-fill demo credentials
   // NOTA: Estes são apenas valores de exemplo para facilitar desenvolvimento/testes.
   // A autenticação real é feita via API (ver função de submit do formulário).
-  const emailInput = document.getElementById('email');
-  if (emailInput) {
-    emailInput.addEventListener('focus', () => {
+  const usernameInput = document.getElementById('username');
+  if (usernameInput) {
+    usernameInput.addEventListener('focus', () => {
       if (selectedRole === 'medico') {
-        document.getElementById('email').value = 'medico@safe.com';
+        document.getElementById('username').value = 'medico1';
         document.getElementById('password').value = 'senha123';
       } else if (selectedRole === 'atendente') {
-        document.getElementById('email').value = 'atendente@safe.com';
+        document.getElementById('username').value = 'atendente1';
         document.getElementById('password').value = 'senha123';
       }
     });
@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      const email = document.getElementById('email').value;
+      const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
       
       if (!selectedRole) {
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (!email || !password) {
+      if (!username || !password) {
         showError('Preencha todos os campos');
         return;
       }
@@ -49,69 +49,83 @@ document.addEventListener('DOMContentLoaded', () => {
       showLoading(true);
       hideMessages();
 
-      // Chamada real à API
+      // Autenticação: Supabase (preferencial) ou backend antigo (fallback).
       try {
-        const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
+        const supa = window.safeSupabase;
+        const authDomain = window.SAFE_SUPABASE_CONFIG?.authDomain || 'safe.local';
+
+        if (supa) {
+          const email = `${String(username).trim().toLowerCase()}@${authDomain}`;
+          const { data, error } = await supa.auth.signInWithPassword({ email, password });
+          if (error || !data?.user) {
+            showError(error?.message || 'Credenciais inválidas');
+            return;
+          }
+
+          const { data: profile, error: profileErr } = await supa
+            .from('profiles')
+            .select('id, username, nome, role')
+            .eq('id', data.user.id)
+            .single();
+
+          if (profileErr || !profile) {
+            // Se não houver profile, desloga para evitar sessão "meio configurada"
+            await supa.auth.signOut().catch(() => {});
+            showError('Perfil não encontrado no Supabase (tabela profiles).');
+            return;
+          }
+
+          if (String(profile.role || '') !== String(selectedRole || '')) {
+            await supa.auth.signOut().catch(() => {});
+            showError('Tipo de usuário não confere com o perfil cadastrado.');
+            return;
+          }
+
+          localStorage.setItem(
+            'loggedUser',
+            JSON.stringify({
+              id: profile.id,
+              username: profile.username,
+              nome: profile.nome,
+              role: profile.role,
+            })
+          );
+
+          showSuccess('Login realizado com sucesso!');
+          setTimeout(() => redirectToDashboard(selectedRole), 500);
+          return;
+        }
+
+        // Fallback: backend antigo (SQLite)
+        const API_BASE_URL =
+          window.API_CONFIG?.BASE_URL ||
           (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
             ? 'http://localhost:3000/api'
             : `${window.location.origin}/api`);
-        
-        // Tentar endpoint de login primeiro
-        let loginUrl = `${API_BASE_URL}/usuarios/login`;
-        let response = await fetch(loginUrl, {
+
+        const email = username; // compat: backend antigo ainda usa "email"
+        const loginUrl = `${API_BASE_URL}/usuarios/login`;
+        const response = await fetch(loginUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, role: selectedRole })
         });
 
-        // Se não existir endpoint de login, buscar usuário na lista
-        if (!response.ok && response.status === 404) {
-          const usuariosUrl = `${API_BASE_URL}/usuarios`;
-          const usuariosResponse = await fetch(usuariosUrl);
-          
-          if (usuariosResponse.ok) {
-            const usuarios = await usuariosResponse.json();
-            const usuario = usuarios.find(u => 
-              u.email === email && 
-              u.senha === password && 
-              (u.role === selectedRole || u.tipo === selectedRole || u.funcao === selectedRole)
-            );
-            
-            if (usuario) {
-              // Salvar informações do usuário logado no localStorage
-              localStorage.setItem('loggedUser', JSON.stringify({ 
-                email, 
-                role: selectedRole,
-                nome: usuario.nome || usuario.name,
-                id: usuario.id
-              }));
-              showSuccess('Login realizado com sucesso!');
-              setTimeout(() => {
-                redirectToDashboard(selectedRole);
-              }, 1000);
-              showLoading(false);
-              return;
-            }
-          }
-        }
-
-        // Se endpoint de login existir e retornar sucesso
         if (response.ok) {
           const userData = await response.json();
-          localStorage.setItem('loggedUser', JSON.stringify({ 
-            email, 
+          localStorage.setItem('loggedUser', JSON.stringify({
+            email,
             role: selectedRole,
             nome: userData.nome || userData.name,
             id: userData.id
           }));
           showSuccess('Login realizado com sucesso!');
-          setTimeout(() => {
-            redirectToDashboard(selectedRole);
-          }, 1000);
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          showError(errorData.message || 'Credenciais inválidas');
+          setTimeout(() => redirectToDashboard(selectedRole), 1000);
+          return;
         }
+
+        const errorData = await response.json().catch(() => ({}));
+        showError(errorData.message || 'Credenciais inválidas');
       } catch (error) {
         console.error('Erro ao fazer login:', error);
         showError('Erro ao conectar com o servidor. Verifique sua conexão.');
@@ -136,8 +150,13 @@ document.addEventListener('DOMContentLoaded', () => {
 // Função removida - agora usa API real
 
 function redirectToDashboard(role) {
-  // Sempre redirecionar para o dashboard principal primeiro
-  window.location.href = 'dashboard.html';
+  // Novo fluxo: sempre cai no Dashboard, que adapta UI por perfil.
+  // As páginas específicas continuam protegidas pelos seus próprios guards.
+  if (role === 'atendente' || role === 'medico') {
+    window.location.href = 'dashboard.html';
+    return;
+  }
+  window.location.href = 'login.html';
 }
 
 function showLoading(show) {

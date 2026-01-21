@@ -86,4 +86,11 @@ Ou por querystring:
 - `PORT`: definido automaticamente no Railway.
 - `SAFE_CORS_ORIGIN`: lista separada por vírgula (ex.: `http://127.0.0.1:8000,https://meu-front.com`).
 - `DB_PATH`: caminho do SQLite (padrão `backend/data.sqlite`).
+- **SOC (integração `exportadados`)**:
+  - `SOC_EMPRESA`
+  - `SOC_CODIGO`
+  - `SOC_CHAVE`
+  - `SOC_CODIGO_USUARIO_AGENDA`
+  - (opcional) `SOC_EXPORT_URL` (padrão `https://ws1.soc.com.br/WebSoc/exportadados`)
+  - (opcional) `SOC_TIMEZONE` (padrão `America/Sao_Paulo`)
 

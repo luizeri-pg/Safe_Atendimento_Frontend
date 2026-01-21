@@ -115,11 +115,11 @@
 
                 <div class="mb-8">
                     <div class="text-xs font-semibold uppercase tracking-wide opacity-70 mb-3 px-4">Atendimento</div>
-                    <a href="atendente.html" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
+                    <a href="atendente.html" id="linkAtendente" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
                         <i class="fas fa-user-nurse text-base w-5 text-center"></i>
                         <span class="text-sm">Painel Atendente</span>
                     </a>
-                    <a href="medico.html" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
+                    <a href="medico.html" id="linkMedico" class="flex items-center gap-3 py-3 px-4 mb-1 rounded-lg transition-all duration-300 no-underline text-white hover:bg-white/10 nav-item">
                         <i class="fas fa-user-md text-base w-5 text-center"></i>
                         <span class="text-sm">Painel Médico</span>
                     </a>
@@ -176,8 +176,8 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-3 cursor-pointer p-2 px-3 rounded-lg transition-colors duration-300 relative hover:bg-gray-50 user-menu" onclick="toggleUserMenu()">
-                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-semibold">JS</div>
-                        <span>Dr. João Silva</span>
+                        <div id="topbarUserAvatar" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-full flex items-center justify-center text-white font-semibold">JS</div>
+                        <span id="topbarUserName">Dr. João Silva</span>
                         <i class="fas fa-chevron-down"></i>
                         <div class="absolute top-full right-0 w-[200px] bg-white rounded-xl shadow-2xl border border-gray-200 z-[1000] user-menu-dropdown" id="userMenuDropdown">
                             <div class="flex items-center gap-3 py-3 px-4 cursor-pointer transition-colors duration-300 border-b border-gray-100 hover:bg-gray-50" onclick="editProfile()">
@@ -266,11 +266,11 @@
                             <i class="fas fa-plus text-xl"></i>
                             <span class="font-semibold text-sm">Novo Atendimento</span>
                         </a>
-                        <a href="atendente.html" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
+                        <a href="atendente.html" id="quickAtendente" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
                             <i class="fas fa-user-nurse text-xl"></i>
                             <span class="font-semibold text-sm">Painel Atendente</span>
                         </a>
-                        <a href="medico.html" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
+                        <a href="medico.html" id="quickMedico" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl">
                             <i class="fas fa-user-md text-xl"></i>
                             <span class="font-semibold text-sm">Painel Médico</span>
                         </a>
@@ -282,7 +282,7 @@
                             <i class="fas fa-chart-line text-xl"></i>
                             <span class="font-semibold text-sm">Ver Histórico</span>
                         </a>
-                        <a href="#" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl" onclick="gerarRelatorio()">
+                        <a href="#" class="flex items-center gap-3 py-4 px-5 bg-gray-50 border-2 border-gray-200 rounded-xl cursor-pointer transition-all duration-300 no-underline text-gray-700 hover:bg-gradient-to-r hover:from-blue-500 hover:to-blue-700 hover:text-white hover:-translate-y-0.5 hover:shadow-xl" onclick="event.preventDefault(); gerarRelatorio();">
                             <i class="fas fa-file-alt text-xl"></i>
                             <span class="font-semibold text-sm">Gerar Relatório</span>
                         </a>
@@ -787,6 +787,10 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="/js/supabaseEnv.js"></script>
+    <script src="../js/supabaseConfig.js"></script>
+    <script src="../js/supabaseClient.js"></script>
     <script src="../js/config.js"></script>
     <script src="../js/dashboard.js"></script>
 </body>

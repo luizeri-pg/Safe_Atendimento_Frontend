@@ -1,6 +1,107 @@
 // URLs da API - carregadas do config.js
 const API_URL = window.API_CONFIG?.SENHAS_URL || "http://localhost:3000/api/senhas";
 
+// Dashboard (novo fluxo):
+// - Após login, todos caem aqui.
+// - A UI adapta conforme o perfil (médico vs atendente).
+// - Sem sessão → redireciona para login.
+async function ensureLoggedUser() {
+    // 1) Preferência: dados já persistidos no localStorage
+    try {
+        const stored = JSON.parse(localStorage.getItem('loggedUser') || 'null');
+        if (stored && stored.role) return stored;
+    } catch {
+        // segue
+    }
+
+    // 2) Supabase: se existe sessão, buscar profile e persistir
+    const supa = window.safeSupabase;
+    if (!supa) return null;
+
+    try {
+        const { data: sessionData, error: sessionErr } = await supa.auth.getSession();
+        if (sessionErr) throw sessionErr;
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return null;
+
+        const { data: profile, error: profileErr } = await supa
+            .from('profiles')
+            .select('id, username, nome, role')
+            .eq('id', userId)
+            .single();
+        if (profileErr || !profile?.role) return null;
+
+        const normalized = {
+            id: profile.id,
+            username: profile.username,
+            nome: profile.nome,
+            role: profile.role,
+        };
+        localStorage.setItem('loggedUser', JSON.stringify(normalized));
+        return normalized;
+    } catch (e) {
+        console.warn('Falha ao restaurar sessão do Supabase no dashboard:', e);
+        return null;
+    }
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function initialsFromName(name) {
+    const safe = String(name || '').trim();
+    if (!safe) return 'SA';
+    const parts = safe.split(/\s+/).filter(Boolean);
+    const first = parts[0]?.[0] || 'S';
+    const last = (parts.length > 1 ? parts[parts.length - 1]?.[0] : '') || 'A';
+    return (first + last).toUpperCase();
+}
+
+function displayNameForUser(user) {
+    const nome = String(user?.nome || '').trim();
+    const username = String(user?.username || '').trim();
+    const base = nome || username || 'Usuário';
+    if (String(user?.role) === 'medico') {
+        // Evitar duplicar "Dr." se já tiver
+        return /^dr\.?\s/i.test(base) ? base : `Dr. ${base}`;
+    }
+    return base;
+}
+
+function applyRoleUI(user) {
+    const role = String(user?.role || '');
+    const isMedico = role === 'medico';
+    const isAtendente = role === 'atendente';
+
+    const displayName = displayNameForUser(user);
+    setText('userName', displayName);
+    setText('topbarUserName', displayName);
+    setText('userRole', isMedico ? 'Médico' : isAtendente ? 'Atendente' : 'Usuário');
+
+    const initials = initialsFromName(displayName.replace(/^dr\.?\s*/i, ''));
+    setText('topbarUserAvatar', initials);
+
+    // Esconder atalhos do painel “errado” (as páginas continuam protegidas pelos guards próprios)
+    const linkAtendente = document.getElementById('linkAtendente');
+    const linkMedico = document.getElementById('linkMedico');
+    const quickAtendente = document.getElementById('quickAtendente');
+    const quickMedico = document.getElementById('quickMedico');
+
+    if (isMedico) {
+        if (linkAtendente) linkAtendente.style.display = 'none';
+        if (quickAtendente) quickAtendente.style.display = 'none';
+        if (linkMedico) linkMedico.style.display = '';
+        if (quickMedico) quickMedico.style.display = '';
+    } else if (isAtendente) {
+        if (linkMedico) linkMedico.style.display = 'none';
+        if (quickMedico) quickMedico.style.display = 'none';
+        if (linkAtendente) linkAtendente.style.display = '';
+        if (quickAtendente) quickAtendente.style.display = '';
+    }
+}
+
 // Função auxiliar para criar AbortController com timeout (compatível com navegadores antigos)
 function createTimeoutSignal(timeoutMs) {
     const controller = new AbortController();
@@ -14,7 +115,11 @@ function getSOCUrl(data) {
         return window.API_CONFIG.getSOC_URL(data);
     }
     // Fallback - URL fixa do SOC com parâmetro de data
-    const dataParam = data || new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
+    const hoje = new Date();
+    const yyyy = hoje.getFullYear();
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoje.getDate()).padStart(2, '0');
+    const dataParam = data || `${yyyy}-${mm}-${dd}`; // Formato YYYY-MM-DD (data local)
     const baseURL = window.API_CONFIG?.BASE_URL || "http://localhost:3000/api";
     return `${baseURL}/soc?data=${dataParam}`;
 }
@@ -734,7 +839,18 @@ function getSOCUrl(data) {
 
         function logout() {
             if (confirm('Deseja realmente sair do sistema?')) {
+                (async () => {
+                    try {
+                        localStorage.removeItem('loggedUser');
+                        localStorage.removeItem('pacienteAtendimento');
+                        // Mantemos preferências do usuário (userSettings) por padrão.
+                        if (window.safeSupabase) {
+                            await window.safeSupabase.auth.signOut().catch(() => {});
+                        }
+                    } finally {
                 window.location.href = 'login.html';
+                    }
+                })();
             }
         }
 
@@ -940,7 +1056,11 @@ function getSOCUrl(data) {
             
             try {
                 // Mesma lógica do index.js: buscar SOC com data de hoje
-                const hojeISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+                const d = new Date();
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const hojeISO = `${yyyy}-${mm}-${dd}`; // YYYY-MM-DD (data local)
                 const socUrl = getSOCUrl(hojeISO);
                 
                 const response = await fetch(socUrl);
@@ -949,7 +1069,10 @@ function getSOCUrl(data) {
                     throw new Error(`Erro HTTP: ${response.status}`);
                 }
                 
-                const consultasSOC = await response.json();
+                const raw = await response.json();
+                const consultasSOC = Array.isArray(raw)
+                    ? raw
+                    : (window.API_CONFIG?.extractFirstArray ? (window.API_CONFIG.extractFirstArray(raw) || []) : []);
                 
                 // Garantir que é um array
                 if (!Array.isArray(consultasSOC)) {
@@ -1021,7 +1144,11 @@ function getSOCUrl(data) {
                     ? 'Backend não está rodando. Inicie o backend local na porta 3000.'
                     : (error.message || 'Erro desconhecido');
                 
-                const hoje = new Date().toISOString().split('T')[0];
+                const d2 = new Date();
+                const yyyy2 = d2.getFullYear();
+                const mm2 = String(d2.getMonth() + 1).padStart(2, '0');
+                const dd2 = String(d2.getDate()).padStart(2, '0');
+                const hoje = `${yyyy2}-${mm2}-${dd2}`;
                 const socUrl = getSOCUrl(hoje);
                 
                 patientsGrid.innerHTML = `
@@ -1687,16 +1814,25 @@ function getSOCUrl(data) {
         }
 
         // Load initial data when DOM is ready
-        function initDashboard() {
+        async function initDashboard() {
             // Verificar se os elementos necessários existem
-            if (document.getElementById('pacientesHoje') && document.getElementById('activityList')) {
-        loadDashboardData();
-        loadRecentActivity();
-                startAutoRefresh();
-            } else {
+            if (!document.getElementById('pacientesHoje') || !document.getElementById('activityList')) {
                 // Tentar novamente após um pequeno delay se os elementos não existirem ainda
-                setTimeout(initDashboard, 100);
+                setTimeout(() => void initDashboard(), 100);
+                return;
             }
+
+            // Guard do dashboard: exige sessão e aplica UI por perfil antes de buscar dados
+            const user = await ensureLoggedUser();
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+            applyRoleUI(user);
+
+            loadDashboardData();
+            loadRecentActivity();
+            startAutoRefresh();
         }
 
         // Aguardar DOM estar pronto
@@ -1708,9 +1844,12 @@ function getSOCUrl(data) {
         
         // Agendar atualização automática na meia-noite (quando o dia mudar)
         scheduleMidnightUpdate();
-        
-        // Agendar atualização automática na meia-noite (quando o dia mudar)
-        scheduleMidnightUpdate();
+
+        // Atalho do HTML
+        function gerarRelatorio() {
+            showSection('reports');
+        }
+        window.gerarRelatorio = gerarRelatorio;
 
         // Mobile sidebar handling
         if (window.innerWidth <= 768) {

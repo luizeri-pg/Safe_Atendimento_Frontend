@@ -40,21 +40,69 @@
       
       async function carregarSenhas() {
         try {
-          const res = await fetch(API_URL);
-          const senhas = await res.json();
+          let senhas = [];
+          if (window.safeSupabase) {
+            const { data, error } = await window.safeSupabase
+              .from('senhas')
+              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
+              .eq('status', 'pendente')
+              .is('medico_atendendo_id', null)
+              .order('updated_at', { ascending: false })
+              .limit(50);
+            if (error) throw error;
+            senhas = (Array.isArray(data) ? data : []).map((s) => ({
+              senha: s.senha,
+              nome: s.nome,
+              cpf: s.cpf,
+              status: s.status,
+              data: s.updated_at || s.created_at,
+              encaminhamento: s.encaminhamento || null,
+              medicoAtendendo: null,
+              medicoAtendendoEmail: null
+            }));
+          } else {
+            const res = await fetch(API_URL);
+            senhas = await res.json();
+          }
           const lista = document.getElementById("senhaLista");
           const semSenhas = document.getElementById("semSenhas");
           lista.innerHTML = "";
           
-          if (senhas.length === 0) {
+          // No painel público, só mostramos a FILA geral:
+          // - status pendente
+          // - com nome
+          // - NÃO chamado/em atendimento
+          // - NÃO encaminhado (encaminhado deve aparecer apenas para o médico de destino)
+          const senhasVisiveis = Array.isArray(senhas)
+            ? senhas.filter((s) => {
+                const nomeOk = s?.nome != null && String(s.nome).trim().length > 0;
+                const status = s?.status != null ? String(s.status).trim() : "";
+                if (!nomeOk || status !== "pendente") return false;
+
+                // Segurança extra: se já foi "chamado", não pode aparecer aqui.
+                // (mesmo se o status ainda estiver pendente por algum motivo)
+                const nome = String(s?.nome || "");
+                const temMarcadorAtendimento = / \[EM ATENDIMENTO - .+?\]$/.test(nome);
+                const temMedicoAtendendo =
+                  s?.medicoAtendendo != null && String(s.medicoAtendendo).trim().length > 0;
+                if (temMarcadorAtendimento || temMedicoAtendendo) return false;
+
+                // Se tem encaminhamento, não exibir no painel público (somente médico destino)
+                const temEncaminhamentoDestino =
+                  s?.encaminhamento && s.encaminhamento.medicoDestino && String(s.encaminhamento.medicoDestino).trim().length > 0;
+                return !temEncaminhamentoDestino;
+              })
+            : [];
+
+          if (senhasVisiveis.length === 0) {
             semSenhas.style.display = "block";
           } else {
             semSenhas.style.display = "none";
             
             // Ordena por data (mais recentes primeiro)
-            senhas.sort((a, b) => new Date(b.data) - new Date(a.data));
+            senhasVisiveis.sort((a, b) => new Date(b.data) - new Date(a.data));
             
-            senhas.forEach((s) => {
+            senhasVisiveis.forEach((s) => {
               const item = document.createElement("div");
               item.className = "senha-item";
               

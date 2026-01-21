@@ -26,6 +26,18 @@
         inicioConsulta: null
       };
 
+      // Guard de acesso: médico não pode acessar painel do atendente e vice-versa
+      (function enforceMedico() {
+        try {
+          const logged = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+          if (!logged?.role || logged.role !== 'medico') {
+            window.location.href = 'login.html';
+          }
+        } catch {
+          window.location.href = 'login.html';
+        }
+      })();
+
       // Configuração do médico baseada no login
       const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
       const medicoConfig = {
@@ -56,14 +68,63 @@
 
       async function carregarFila() {
         try {
-          // Usar função getAPIUrl para garantir URL correta a cada chamada
-          const url = getAPIUrl();
-          const res = await fetch(url);
-          const senhas = await res.json();
-          
           // Obter médico atual logado
           const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
           const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+          const myId = loggedUser?.id || null;
+
+          // Fonte de dados: Supabase (preferencial) ou backend antigo (fallback)
+          let senhas = [];
+          if (window.safeSupabase) {
+            const { data, error } = await window.safeSupabase
+              .from('senhas')
+              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
+              .in('status', ['pendente', 'em_atendimento', 'atendida'])
+              .order('updated_at', { ascending: false })
+              .limit(200);
+            if (error) throw error;
+
+            senhas = (Array.isArray(data) ? data : []).map((s) => {
+              const rawEnc = s.encaminhamento || null;
+              const enc = rawEnc
+                ? {
+                    // compat com código legado (que espera strings)
+                    medicoOrigem: rawEnc.medicoOrigem || rawEnc.medicoOrigemId || null,
+                    medicoDestino: rawEnc.medicoDestino || rawEnc.medicoDestinoId || null,
+                    salaDestino: rawEnc.salaDestino || null,
+                    motivo: rawEnc.motivo || null,
+                    aceito: rawEnc.aceito === true,
+                    // ids explícitos (para comparações)
+                    medicoOrigemId: rawEnc.medicoOrigemId || null,
+                    medicoDestinoId: rawEnc.medicoDestinoId || null,
+                    createdAt: rawEnc.createdAt || null,
+                    acceptedAt: rawEnc.acceptedAt || null
+                  }
+                : null;
+
+              return {
+                senha: s.senha,
+                nome: s.nome,
+                cpf: s.cpf,
+                status: s.status,
+                data: s.updated_at || s.created_at,
+                encaminhamento: enc,
+                medicoAtendendo:
+                  s.medico_atendendo_id && myId && s.medico_atendendo_id === myId
+                    ? medicoAtualNome
+                    : s.medico_atendendo_id
+                      ? 'Outro médico'
+                      : null,
+                medicoAtendendoEmail: null,
+                medico_atendendo_id: s.medico_atendendo_id
+              };
+            });
+          } else {
+            // Usar função getAPIUrl para garantir URL correta a cada chamada
+            const url = getAPIUrl();
+            const res = await fetch(url);
+            senhas = await res.json();
+          }
           
           // Filtra senhas pendentes E que foram encaminhadas para este médico OU não foram encaminhadas
           const filaPendentes = senhas.filter(s => {
@@ -71,80 +132,80 @@
               return false;
             }
             
-            // Verificar se o paciente está sendo atendido
-            // Estratégia: verificar no nome se tem marcador [EM ATENDIMENTO - Nome do Médico]
-            let medicoAtendendo = s.medicoAtendendo;
-            let medicoAtendendoEmail = s.medicoAtendendoEmail;
-            
-            // Verificar se o nome tem marcador de atendimento
-            const nomeCompleto = s.nome || '';
-            const marcadorRegex = / \[EM ATENDIMENTO - (.+?)\]$/;
-            const matchMarcador = nomeCompleto.match(marcadorRegex);
-            
-            if (matchMarcador) {
-              const medicoDoMarcador = matchMarcador[1];
-              
-              // Se não tem no backend, usar do marcador no nome
-              if (!medicoAtendendo || medicoAtendendo.trim() === '') {
-                medicoAtendendo = medicoDoMarcador;
+            // Se o Supabase estiver ativo, usamos o campo medico_atendendo_id (fonte de verdade)
+            if (window.safeSupabase) {
+              if (s.medico_atendendo_id) {
+                // Se está em atendimento (por qualquer médico), não aparece na fila
+                return false;
               }
-            }
-            
-            // Também verificar no localStorage (para compatibilidade e controle local)
-            const chaveMedicoAtendendo = `medicoAtendendo_${s.senha}`;
-            const dadosLocalStorage = localStorage.getItem(chaveMedicoAtendendo);
-            
-            if (dadosLocalStorage && (!medicoAtendendo || medicoAtendendo.trim() === '')) {
-              try {
-                const dados = JSON.parse(dadosLocalStorage);
-                const agora = new Date();
-                const timestampAtendimento = new Date(dados.timestamp);
-                const diferencaMinutos = (agora - timestampAtendimento) / 60000;
-                
-                // Se foi atualizado nos últimos 30 minutos, usar
-                if (diferencaMinutos < 30) {
-                  medicoAtendendo = dados.medico;
-                  medicoAtendendoEmail = dados.email;
+            } else {
+              // Fallback legacy: filtrar pelo marcador e campos antigos
+              let medicoAtendendo = s.medicoAtendendo;
+              let medicoAtendendoEmail = s.medicoAtendendoEmail;
+
+              const nomeCompleto = s.nome || '';
+              const marcadorRegex = / \[EM ATENDIMENTO - (.+?)\]$/;
+              const matchMarcador = nomeCompleto.match(marcadorRegex);
+              if (matchMarcador) {
+                const medicoDoMarcador = matchMarcador[1];
+                if (!medicoAtendendo || medicoAtendendo.trim() === '') {
+                  medicoAtendendo = medicoDoMarcador;
                 }
-              } catch (e) {
-                console.warn('❌ Erro ao ler localStorage:', e);
               }
-            }
-            
-            // Se o paciente está sendo atendido por outro médico, NÃO mostrar
-            if (medicoAtendendo && medicoAtendendo.trim() !== '') {
-              const medicoAtendendoTrim = medicoAtendendo.trim();
-              const mesmoMedicoPorNome = medicoAtendendoTrim === medicoAtualNome;
-              
-              // Verificar também por email se disponível
-              let mesmoMedicoPorEmail = false;
-              if (loggedUser.email && medicoAtendendoEmail) {
-                mesmoMedicoPorEmail = medicoAtendendoEmail.trim() === loggedUser.email.trim();
+
+              const chaveMedicoAtendendo = `medicoAtendendo_${s.senha}`;
+              const dadosLocalStorage = localStorage.getItem(chaveMedicoAtendendo);
+              if (dadosLocalStorage && (!medicoAtendendo || medicoAtendendo.trim() === '')) {
+                try {
+                  const dados = JSON.parse(dadosLocalStorage);
+                  const agora = new Date();
+                  const timestampAtendimento = new Date(dados.timestamp);
+                  const diferencaMinutos = (agora - timestampAtendimento) / 60000;
+                  if (diferencaMinutos < 30) {
+                    medicoAtendendo = dados.medico;
+                    medicoAtendendoEmail = dados.email;
+                  }
+                } catch (e) {
+                  console.warn('❌ Erro ao ler localStorage:', e);
+                }
               }
-              
-              // Se NÃO é o médico atual (nem por nome nem por email), NÃO mostrar
-              if (!mesmoMedicoPorNome && !mesmoMedicoPorEmail) {
-                return false; // Está sendo atendido por outro médico
+
+              if (medicoAtendendo && medicoAtendendo.trim() !== '') {
+                const medicoAtendendoTrim = medicoAtendendo.trim();
+                const mesmoMedicoPorNome = medicoAtendendoTrim === medicoAtualNome;
+                let mesmoMedicoPorEmail = false;
+                if (loggedUser.email && medicoAtendendoEmail) {
+                  mesmoMedicoPorEmail = medicoAtendendoEmail.trim() === loggedUser.email.trim();
+                }
+                if (!mesmoMedicoPorNome && !mesmoMedicoPorEmail) {
+                  return false;
+                }
+                return false;
               }
-              
-              // Se é o médico atual, não mostrar na fila (já está no card de atendimento)
-              return false;
             }
             
             // Se tem encaminhamento, verificar se foi encaminhado para este médico
             if (s.encaminhamento && s.encaminhamento.medicoDestino) {
-              const medicoDestino = s.encaminhamento.medicoDestino.trim();
-              // Comparar por nome ou email do médico atual
-              const encaminhadoParaEste = medicoDestino === medicoAtualNome || 
-                     medicoDestino.includes(medicoAtualNome) ||
-                     (loggedUser.email && medicoDestino.includes(loggedUser.email));
-              
-              // Se foi encaminhado para este médico, mostrar (mesmo que não aceito ainda)
-              if (encaminhadoParaEste) {
-                return true; // Mostrar na fila (para aceitar se não aceito, ou chamar se aceito)
+              if (window.safeSupabase) {
+                const destinoId = s.encaminhamento.medicoDestinoId || s.encaminhamento.medicoDestino;
+                // Encaminhado para outro médico -> não mostrar
+                if (destinoId && myId && String(destinoId) !== String(myId)) return false;
+                // Encaminhado para mim -> mostrar
+                return true;
+              } else {
+                const medicoDestino = s.encaminhamento.medicoDestino.trim();
+                // Comparar por nome ou email do médico atual
+                const encaminhadoParaEste = medicoDestino === medicoAtualNome || 
+                       medicoDestino.includes(medicoAtualNome) ||
+                       (loggedUser.email && medicoDestino.includes(loggedUser.email));
+                
+                // Se foi encaminhado para este médico, mostrar (mesmo que não aceito ainda)
+                if (encaminhadoParaEste) {
+                  return true; // Mostrar na fila (para aceitar se não aceito, ou chamar se aceito)
+                }
+                // Se foi encaminhado para outro médico, não mostrar
+                return false;
               }
-              // Se foi encaminhado para outro médico, não mostrar
-              return false;
             }
             
             // Se não tem encaminhamento e não está sendo atendido por ninguém, mostrar (paciente novo)
@@ -277,39 +338,55 @@
 
       async function chamarProximoPaciente() {
         try {
-          const url = getAPIUrl();
-          const res = await fetch(url);
-          const senhas = await res.json();
-          
           // Obter médico atual
-          const medicoAtualNome = document.getElementById('medicoNome').textContent;
+          const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
           const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-          
-          // Buscar próximo paciente disponível (não está sendo atendido por outro médico)
-          const proximo = senhas.find(s => {
-            if (s.status !== 'pendente') return false;
-            
-            // Se está sendo atendido por outro médico, não está disponível
-            if (s.medicoAtendendo && s.medicoAtendendo !== medicoAtualNome) {
-              if (loggedUser.email && s.medicoAtendendoEmail && s.medicoAtendendoEmail !== loggedUser.email) {
-                return false;
+          const myId = loggedUser?.id || null;
+
+          let proximo = null;
+          if (window.safeSupabase) {
+            const { data, error } = await window.safeSupabase
+              .from('senhas')
+              .select('senha,encaminhamento,medico_atendendo_id,status,updated_at,created_at')
+              .eq('status', 'pendente')
+              .is('medico_atendendo_id', null)
+              .order('updated_at', { ascending: true }) // mais antigas primeiro
+              .limit(50);
+            if (error) throw error;
+
+            const lista = Array.isArray(data) ? data : [];
+            proximo = lista.find((s) => {
+              const enc = s.encaminhamento || null;
+              const destino = enc?.medicoDestinoId || enc?.medicoDestino || null;
+              if (destino && myId && String(destino) !== String(myId)) return false;
+              return true;
+            });
+          } else {
+            const url = getAPIUrl();
+            const res = await fetch(url);
+            const senhas = await res.json();
+            // Buscar próximo paciente disponível (não está sendo atendido por outro médico)
+            proximo = senhas.find(s => {
+              if (s.status !== 'pendente') return false;
+              
+              if (s.medicoAtendendo && s.medicoAtendendo !== medicoAtualNome) {
+                if (loggedUser.email && s.medicoAtendendoEmail && s.medicoAtendendoEmail !== loggedUser.email) {
+                  return false;
+                }
+                if (!loggedUser.email || !s.medicoAtendendoEmail) {
+                  return false;
+                }
               }
-              if (!loggedUser.email || !s.medicoAtendendoEmail) {
-                return false;
+              
+              if (s.encaminhamento && s.encaminhamento.medicoDestino) {
+                const medicoDestino = s.encaminhamento.medicoDestino;
+                return medicoDestino === medicoAtualNome || 
+                       medicoDestino.includes(medicoAtualNome) ||
+                       (loggedUser.email && medicoDestino.includes(loggedUser.email));
               }
-            }
-            
-            // Se tem encaminhamento, só pode chamar se foi encaminhado para este médico
-            if (s.encaminhamento && s.encaminhamento.medicoDestino) {
-              const medicoDestino = s.encaminhamento.medicoDestino;
-              return medicoDestino === medicoAtualNome || 
-                     medicoDestino.includes(medicoAtualNome) ||
-                     (loggedUser.email && medicoDestino.includes(loggedUser.email));
-            }
-            
-            // Paciente disponível
-            return true;
-          });
+              return true;
+            });
+          }
           
           if (proximo) {
             await chamarPaciente(proximo.senha);
@@ -338,118 +415,100 @@
       async function chamarPaciente(senha) {
         try {
           // Busca dados do paciente
-              const url = getAPIUrl();
-          const res = await fetch(url);
-          const senhas = await res.json();
-          const paciente = senhas.find(s => s.senha === senha);
+          let paciente = null;
+          if (window.safeSupabase) {
+            const { data, error } = await window.safeSupabase
+              .from('senhas')
+              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
+              .eq('senha', senha)
+              .single();
+            if (error) throw error;
+            paciente = data
+              ? {
+                  senha: data.senha,
+                  nome: data.nome,
+                  cpf: data.cpf,
+                  status: data.status,
+                  data: data.updated_at || data.created_at,
+                  encaminhamento: data.encaminhamento || null,
+                  medico_atendendo_id: data.medico_atendendo_id || null
+                }
+              : null;
+          } else {
+            const url = getAPIUrl();
+            const res = await fetch(url);
+            const senhas = await res.json();
+            paciente = senhas.find(s => s.senha === senha);
+          }
           
           if (paciente) {
             // Obter informações do médico atual primeiro
             const medicoAtualNome = document.getElementById('medicoNome').textContent;
             const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
             
-            // Verificar se o paciente já está sendo atendido por outro médico
-            if (paciente.medicoAtendendo && paciente.medicoAtendendo !== medicoAtualNome) {
-              // Verificar também por email
-              if (loggedUser.email && paciente.medicoAtendendoEmail && paciente.medicoAtendendoEmail !== loggedUser.email) {
-                alert(`Este paciente já está sendo atendido por ${paciente.medicoAtendendo}`);
-                carregarFila(); // Atualiza a fila para remover este paciente
-                return;
-              }
-              // Se não tem email, comparar por nome
-              if (!loggedUser.email || !paciente.medicoAtendendoEmail) {
-                alert(`Este paciente já está sendo atendido por ${paciente.medicoAtendendo}`);
-                carregarFila(); // Atualiza a fila para remover este paciente
-                return;
-              }
-            }
-            
-            // Salvar no backend que este médico está atendendo o paciente
-            // Como o backend não retorna o campo medicoAtendendo, vamos usar uma estratégia:
-            // Adicionar um marcador no nome do paciente temporariamente para indicar que está em atendimento
-            // Isso será visível para outros médicos quando buscarem a lista
-            try {
-              const timestampAtual = new Date().toISOString();
-              const nomeOriginal = paciente.nome || 'Sem nome';
-              
-              // Verificar se o nome já tem o marcador de outro médico
-              const marcadorRegex = / \[EM ATENDIMENTO - .+?\]$/;
-              const nomeSemMarcador = nomeOriginal.replace(marcadorRegex, '');
-              
-              // Adicionar marcador ao nome para indicar que está em atendimento
-              const nomeComMarcador = `${nomeSemMarcador} [EM ATENDIMENTO - ${medicoAtualNome}]`;
-              
-              // Tentar salvar o campo medicoAtendendo E atualizar o nome com marcador
-              const dadosParaSalvar = { 
-                medicoAtendendo: medicoAtualNome,
-                medicoAtendendoEmail: loggedUser.email || null,
-                nome: nomeComMarcador, // Nome com marcador para outros médicos verem
-                data: timestampAtual
-              };
-              
-              const response = await fetch(`${url}/${encodeURIComponent(senha)}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dadosParaSalvar),
+            if (window.safeSupabase) {
+              // Chamada ATÔMICA via RPC (impede dois médicos chamarem a mesma senha)
+              const { data: called, error: callErr } = await window.safeSupabase.rpc('chamar_senha', {
+                p_senha: senha
               });
-              
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error('❌ Erro na resposta do backend:', response.status, errorText);
-                throw new Error(`Erro ao salvar no backend: ${response.status}`);
+              if (callErr) {
+                alert('Esta senha não está mais disponível (já foi chamada ou não pode ser chamada).');
+                carregarFila();
+                return;
               }
-              
-              const dadosSalvos = await response.json();
-              
-              // Salvar no localStorage com timestamp para controle local
-              const chaveMedicoAtendendo = `medicoAtendendo_${senha}`;
-              const dadosLocalStorage = {
-                medico: medicoAtualNome,
-                email: loggedUser.email || null,
-                timestamp: timestampAtual,
-                senha: senha
-              };
-              localStorage.setItem(chaveMedicoAtendendo, JSON.stringify(dadosLocalStorage));
-              
-              // Também salvar em um registro global de pacientes em atendimento
-              const chaveGlobal = 'pacientesEmAtendimento';
-              let pacientesGlobal = {};
+              // Atualiza dados do paciente com retorno da RPC
+              paciente.status = called.status;
+              paciente.medico_atendendo_id = called.medico_atendendo_id;
+            } else {
+              // Fluxo legacy permanece (backend antigo)
+              // (mantido sem mudanças)
               try {
-                const dadosGlobal = localStorage.getItem(chaveGlobal);
-                if (dadosGlobal) {
-                  pacientesGlobal = JSON.parse(dadosGlobal);
-                }
+                const url = getAPIUrl();
+                const timestampAtual = new Date().toISOString();
+                const nomeOriginal = paciente.nome || 'Sem nome';
+                const marcadorRegex = / \[EM ATENDIMENTO - .+?\]$/;
+                const nomeSemMarcador = nomeOriginal.replace(marcadorRegex, '');
+                const nomeComMarcador = `${nomeSemMarcador} [EM ATENDIMENTO - ${medicoAtualNome}]`;
+
+                const dadosParaSalvar = { 
+                  medicoAtendendo: medicoAtualNome,
+                  medicoAtendendoEmail: loggedUser.email || null,
+                  nome: nomeComMarcador,
+                  status: "em_atendimento",
+                  data: timestampAtual
+                };
+
+                const response = await fetch(`${url}/${encodeURIComponent(senha)}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(dadosParaSalvar),
+                });
+                if (!response.ok) throw new Error(`Erro ao salvar no backend: ${response.status}`);
+
+                paciente.medicoAtendendo = medicoAtualNome;
+                paciente.medicoAtendendoEmail = loggedUser.email || null;
+                paciente.data = timestampAtual;
+                paciente.nomeOriginal = nomeSemMarcador;
+                paciente.nome = nomeSemMarcador;
               } catch (e) {
-                console.warn('Erro ao ler pacientes global:', e);
+                console.error("❌ Erro ao salvar médico atendendo no backend:", e);
+                alert('Erro ao salvar no servidor. Tente novamente.');
+                return;
               }
-              
-              pacientesGlobal[senha] = dadosLocalStorage;
-              localStorage.setItem(chaveGlobal, JSON.stringify(pacientesGlobal));
-              
-              // Atualizar dados locais (usar nome original para exibição local)
-              paciente.medicoAtendendo = medicoAtualNome;
-              paciente.medicoAtendendoEmail = loggedUser.email || null;
-              paciente.data = timestampAtual;
-              paciente.nomeOriginal = nomeSemMarcador; // Guardar nome original
-              // Para exibição local, usar nome sem marcador
-              paciente.nome = nomeSemMarcador;
-            } catch (e) {
-              console.error("❌ Erro ao salvar médico atendendo no backend:", e);
-              alert('Erro ao salvar no servidor. Tente novamente.');
-              return;
             }
             
             // Atualizar dados locais apenas após salvar no backend
             pacienteAtual = paciente;
-            pacienteAtual.medicoAtendendo = medicoAtualNome;
-            pacienteAtual.medicoAtendendoEmail = loggedUser.email || null;
             estatisticas.inicioConsulta = new Date();
             
             // Atualiza interface
             document.getElementById('senhaAtual').textContent = paciente.senha;
             document.getElementById('nomeAtual').textContent = paciente.nome || 'Sem nome';
             document.getElementById('cpfAtual').textContent = paciente.cpf || 'Sem CPF';
-            document.getElementById('pacienteAtual').classList.add('ativo');
+            // Mostrar card do paciente em atendimento (Tailwind usa `hidden`)
+            const pacienteAtualEl = document.getElementById('pacienteAtual');
+            pacienteAtualEl.classList.remove('hidden');
+            pacienteAtualEl.classList.add('block');
             
             // Habilita botões de controle
             document.getElementById('btnFinalizarConsulta').disabled = false;
@@ -488,17 +547,21 @@
         if (!confirmacao) return;
         
         try {
-          const url = getAPIUrl();
-          // Marca como atendida e remove médico atendendo
-          await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              status: "atendida",
-              medicoAtendendo: null,
-              medicoAtendendoEmail: null
-            }),
-          });
+          if (window.safeSupabase) {
+            const { error } = await window.safeSupabase.rpc('finalizar_senha', { p_senha: pacienteAtual.senha });
+            if (error) throw error;
+          } else {
+            const url = getAPIUrl();
+            await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                status: "atendida",
+                medicoAtendendo: null,
+                medicoAtendendoEmail: null
+              }),
+            });
+          }
           
           // Calcula tempo de consulta
           if (estatisticas.inicioConsulta) {
@@ -506,13 +569,10 @@
             // Tempo de consulta calculado (pode ser usado para estatísticas futuras)
           }
           
-          // Remover marcador do nome no backend e limpar localStorage
-          if (pacienteAtual && pacienteAtual.senha) {
+          // Legacy cleanup de marcador/localStorage
+          if (!window.safeSupabase && pacienteAtual && pacienteAtual.senha) {
             const nomeOriginal = pacienteAtual.nomeOriginal || pacienteAtual.nome || 'Sem nome';
-            // Remover marcador se houver
             const nomeSemMarcador = nomeOriginal.replace(/ \[EM ATENDIMENTO - .+?\]$/, '');
-            
-            // Atualizar no backend removendo o marcador
             try {
               const url = getAPIUrl();
               await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
@@ -528,7 +588,6 @@
             } catch (e) {
               console.warn('Erro ao remover marcador:', e);
             }
-            
             const chaveMedicoAtendendo = `medicoAtendendo_${pacienteAtual.senha}`;
             localStorage.removeItem(chaveMedicoAtendendo);
           }
@@ -538,7 +597,9 @@
           estatisticas.inicioConsulta = null;
           
           // Atualiza interface
-          document.getElementById('pacienteAtual').classList.remove('ativo');
+          const pacienteAtualEl = document.getElementById('pacienteAtual');
+          pacienteAtualEl.classList.add('hidden');
+          pacienteAtualEl.classList.remove('block');
           document.getElementById('btnFinalizarConsulta').disabled = true;
           document.getElementById('btnEncaminharPaciente').disabled = true;
           document.getElementById('btnChamarProximo').disabled = false;
@@ -642,6 +703,39 @@
       // Função para buscar médicos/usuários ativos
       async function carregarMedicosAtivos() {
         try {
+          // Preferir Supabase (perfis) quando disponível
+          if (window.safeSupabase) {
+            const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+            const myId = loggedUser?.id || null;
+
+            const { data: profiles, error } = await window.safeSupabase
+              .from('profiles')
+              .select('id,nome,role,specialty')
+              .eq('role', 'medico')
+              .order('nome', { ascending: true });
+            if (error) throw error;
+
+            const medicos = (Array.isArray(profiles) ? profiles : []).filter((p) => !myId || String(p.id) !== String(myId));
+
+            const selectMedico = document.getElementById('medicoDestino');
+            selectMedico.innerHTML = '<option value="">Selecione o médico</option>';
+            selectMedico.disabled = false;
+
+            if (medicos.length === 0) {
+              selectMedico.innerHTML += '<option value="" disabled>Nenhum médico disponível</option>';
+              return;
+            }
+
+            medicos.forEach((m, index) => {
+              const option = document.createElement('option');
+              option.value = m.id; // UUID (para RPC encaminhar_senha)
+              option.textContent = `${m.nome}${m.specialty ? ' - ' + m.specialty : ''}`;
+              option.dataset.sala = `Sala ${String(index + 1).padStart(2, '0')}`; // placeholder local
+              selectMedico.appendChild(option);
+            });
+            return;
+          }
+
           // Lista estática de médicos disponíveis (fallback quando API não estiver disponível)
           const medicosEstaticos = [
             { nome: 'Dr. João Silva', especialidade: 'Clínico Geral', sala: 'Sala 01', email: 'medico@safe.com' },
@@ -692,6 +786,39 @@
           if (!medicosAtivos || medicosAtivos.length === 0) {
             medicosAtivos = medicosEstaticos;
           }
+
+          // Descobrir médicos ocupados (com paciente em atendimento)
+          let busyNames = new Set();
+          let busyEmails = new Set();
+          try {
+            const urlSenhas = getAPIUrl();
+            const resSenhas = await fetch(urlSenhas);
+            if (resSenhas.ok) {
+              const senhas = await resSenhas.json();
+              (Array.isArray(senhas) ? senhas : []).forEach((s) => {
+                if (!s) return;
+                const status = s.status != null ? String(s.status).trim() : "";
+                if (status !== "em_atendimento") return;
+                if (s.medicoAtendendo) busyNames.add(String(s.medicoAtendendo).trim());
+                if (s.medicoAtendendoEmail) busyEmails.add(String(s.medicoAtendendoEmail).trim());
+                const nomeCompleto = s.nome || "";
+                const match = String(nomeCompleto).match(/ \[EM ATENDIMENTO - (.+?)\]$/);
+                if (match && match[1]) busyNames.add(String(match[1]).trim());
+              });
+            }
+          } catch (e) {
+            // Se falhar, não bloqueia o encaminhamento (só não filtra por disponibilidade)
+          }
+
+          function normalizeDoctorName(name) {
+            return String(name || "")
+              .replace(/\s+/g, " ")
+              .trim()
+              .replace(/^Dr\.\s*/i, "")
+              .replace(/^Dra\.\s*/i, "")
+              .toLowerCase();
+          }
+          const busyNamesNorm = new Set(Array.from(busyNames).map(normalizeDoctorName).filter(Boolean));
           
           // Excluir o médico atual da lista
           const medicoAtual = document.getElementById('medicoNome').textContent;
@@ -704,7 +831,17 @@
                               `Dr. ${nomeMedico}` !== medicoAtual && 
                               `Dra. ${nomeMedico}` !== medicoAtual &&
                               medico.email !== loggedUser.email;
-            return naoEhAtual;
+            if (!naoEhAtual) return false;
+
+            // Filtrar somente médicos disponíveis (sem atendimento em andamento)
+            const email = medico.email ? String(medico.email).trim() : "";
+            if (email && busyEmails.has(email)) return false;
+            const nomeNorm = normalizeDoctorName(nomeMedico);
+            if (nomeNorm && busyNamesNorm.has(nomeNorm)) return false;
+            // Também comparar contra o "nome completo" que costuma ser salvo (Dr./Dra.)
+            const nomeCompleto = `${nomeMedico}`.trim();
+            if (nomeCompleto && busyNames.has(nomeCompleto)) return false;
+            return true;
           });
           
           // Preencher select com médicos ativos
@@ -800,51 +937,32 @@
             aceito: false // Inicialmente não aceito, precisa ser aceito pelo médico de destino
           };
           
-          // Tentar salvar no backend via endpoint de encaminhamento (se existir)
-          let encaminhamentoSalvo = false;
-          try {
-            const isLocalhost = window.location.hostname === 'localhost' || 
-                               window.location.hostname === '127.0.0.1' ||
-                               window.location.hostname === '';
-            const baseURL = (window.API_CONFIG && window.API_CONFIG.BASE_URL) 
-              ? window.API_CONFIG.BASE_URL
-              : (isLocalhost ? "http://localhost:3000/api" : `${window.location.origin}/api`);
-            
-            const res = await fetch(`${baseURL}/encaminhamento`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                senha: pacienteAtual.senha,
-                ...encaminhamentoData
-              })
+          if (window.safeSupabase) {
+            const medicoDestinoId = medicoDestino; // no modo Supabase, value deve ser uuid
+            const { error } = await window.safeSupabase.rpc('encaminhar_senha', {
+              p_senha: pacienteAtual.senha,
+              p_medico_destino_id: medicoDestinoId,
+              p_motivo: motivo,
+              p_sala_destino: salaDestino
             });
-            
-            if (res.ok) {
-              encaminhamentoSalvo = true;
+            if (error) throw error;
+          } else {
+            // Legacy: mantém comportamento existente (PATCH no backend)
+            try {
+              const url = getAPIUrl();
+              await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                  encaminhamento: encaminhamentoData,
+                  status: 'pendente',
+                  medicoAtendendo: null,
+                  medicoAtendendoEmail: null
+                }),
+              });
+            } catch (patchError) {
+              console.warn('⚠️ Erro ao atualizar senha do paciente:', patchError);
             }
-          } catch (apiError) {
-            console.warn('⚠️ Endpoint de encaminhamento não disponível, salvando apenas localmente:', apiError);
-          }
-          
-          // Tentar atualizar a senha do paciente para incluir dados de encaminhamento
-          try {
-            const url = getAPIUrl();
-            const res = await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                encaminhamento: encaminhamentoData,
-                status: 'pendente', // Mantém como pendente para o próximo médico
-                medicoAtendendo: null, // Remove médico atendendo para que apareça para o médico de destino
-                medicoAtendendoEmail: null
-              }),
-            });
-            
-            if (res.ok) {
-              // Dados de encaminhamento adicionados com sucesso
-            }
-          } catch (patchError) {
-            console.warn('⚠️ Erro ao atualizar senha do paciente:', patchError);
           }
           
           // Fecha modal
@@ -861,13 +979,9 @@
           // Salvar no localStorage para passar para o painel
           localStorage.setItem('encaminhamento', JSON.stringify(dadosCompletos));
           
-          // Remover marcador do nome no backend e limpar localStorage
-          if (pacienteAtual && pacienteAtual.senha) {
+          if (!window.safeSupabase && pacienteAtual && pacienteAtual.senha) {
             const nomeOriginal = pacienteAtual.nomeOriginal || pacienteAtual.nome || 'Sem nome';
-            // Remover marcador se houver
             const nomeSemMarcador = nomeOriginal.replace(/ \[EM ATENDIMENTO - .+?\]$/, '');
-            
-            // Atualizar no backend removendo o marcador
             try {
               const url = getAPIUrl();
               await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
@@ -882,7 +996,6 @@
             } catch (e) {
               console.warn('Erro ao remover marcador:', e);
             }
-            
             const chaveMedicoAtendendo = `medicoAtendendo_${pacienteAtual.senha}`;
             localStorage.removeItem(chaveMedicoAtendendo);
           }
@@ -892,7 +1005,9 @@
           estatisticas.inicioConsulta = null;
           
           // Atualiza interface - volta para o painel
-          document.getElementById('pacienteAtual').classList.remove('ativo');
+          const pacienteAtualEl = document.getElementById('pacienteAtual');
+          pacienteAtualEl.classList.add('hidden');
+          pacienteAtualEl.classList.remove('block');
           document.getElementById('btnFinalizarConsulta').disabled = true;
           document.getElementById('btnEncaminharPaciente').disabled = true;
           document.getElementById('btnChamarProximo').disabled = false;
@@ -902,10 +1017,11 @@
           acoesPaciente2.classList.add("hidden");
           acoesPaciente2.classList.remove("block");
           
-          // Redirecionar para o painel público mostrando o encaminhamento
+          // Não redireciona para painel público (encaminhamento é interno entre médicos).
+          // Apenas atualiza a fila localmente.
           setTimeout(() => {
-            window.location.href = `painel.html?encaminhamento=true&sala=${encodeURIComponent(salaDestino)}`;
-          }, 1500);
+            carregarFila();
+          }, 300);
           
         } catch (e) {
           console.error("Erro ao encaminhar paciente:", e);
@@ -916,10 +1032,21 @@
       // Função para aceitar encaminhamento
       async function aceitarEncaminhamento(senha) {
         try {
-          const url = getAPIUrl();
-          const res = await fetch(url);
-          const senhas = await res.json();
-          const paciente = senhas.find(s => s.senha === senha);
+          let paciente = null;
+          if (window.safeSupabase) {
+            const { data, error } = await window.safeSupabase
+              .from('senhas')
+              .select('senha,nome,cpf,status,encaminhamento')
+              .eq('senha', senha)
+              .single();
+            if (error) throw error;
+            paciente = data;
+          } else {
+            const url = getAPIUrl();
+            const res = await fetch(url);
+            const senhas = await res.json();
+            paciente = senhas.find(s => s.senha === senha);
+          }
           
           if (!paciente || !paciente.encaminhamento) {
             alert('Paciente não encontrado ou não foi encaminhado.');
@@ -928,11 +1055,20 @@
           
           // Verificar se foi encaminhado para este médico
           const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
-          const medicoDestino = paciente.encaminhamento.medicoDestino;
-          
-          if (medicoDestino !== medicoAtualNome && !medicoDestino.includes(medicoAtualNome)) {
-            alert('Este paciente não foi encaminhado para você.');
-            return;
+          if (window.safeSupabase) {
+            const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
+            const myId = loggedUser?.id || null;
+            const destinoId = paciente.encaminhamento?.medicoDestinoId || paciente.encaminhamento?.medicoDestino || null;
+            if (destinoId && myId && String(destinoId) !== String(myId)) {
+              alert('Este paciente não foi encaminhado para você.');
+              return;
+            }
+          } else {
+            const medicoDestino = paciente.encaminhamento.medicoDestino;
+            if (medicoDestino !== medicoAtualNome && !medicoDestino.includes(medicoAtualNome)) {
+              alert('Este paciente não foi encaminhado para você.');
+              return;
+            }
           }
           
           // Confirmar aceitação
@@ -944,21 +1080,24 @@
           
           if (!confirmacao) return;
           
-          // Atualizar encaminhamento para aceito
-          const encaminhamentoAtualizado = {
-            ...paciente.encaminhamento,
-            aceito: true,
-            dataAceitacao: new Date().toISOString()
-          };
-          
-          // Atualizar no backend
-          await fetch(`${url}/${encodeURIComponent(senha)}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              encaminhamento: encaminhamentoAtualizado
-            }),
-          });
+          if (window.safeSupabase) {
+            const { error } = await window.safeSupabase.rpc('aceitar_encaminhamento', { p_senha: senha });
+            if (error) throw error;
+          } else {
+            const url = getAPIUrl();
+            const encaminhamentoAtualizado = {
+              ...paciente.encaminhamento,
+              aceito: true,
+              dataAceitacao: new Date().toISOString()
+            };
+            await fetch(`${url}/${encodeURIComponent(senha)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                encaminhamento: encaminhamentoAtualizado
+              }),
+            });
+          }
           
           // Encaminhamento aceito com sucesso
           

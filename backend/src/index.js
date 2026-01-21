@@ -42,6 +42,27 @@ function pickStaticRoot() {
 
 const STATIC_ROOT = pickStaticRoot();
 if (STATIC_ROOT) {
+  // Expor credenciais do Supabase para o frontend em localhost via .env
+  // IMPORTANTE: somente PUBLIC anon key. Nunca exponha service role key.
+  app.get("/js/supabaseEnv.js", (_req, res) => {
+    const url = String(process.env.SUPABASE_URL || "").trim();
+    const anonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+    const authDomain = String(process.env.SAFE_SUPABASE_AUTH_DOMAIN || "safe.local").trim();
+
+    res
+      .type("application/javascript")
+      .send(
+        [
+          "(function(){",
+          "  window.__SAFE_SUPABASE_ENV = window.__SAFE_SUPABASE_ENV || {};",
+          `  window.__SAFE_SUPABASE_ENV.url = ${JSON.stringify(url)};`,
+          `  window.__SAFE_SUPABASE_ENV.anonKey = ${JSON.stringify(anonKey)};`,
+          `  window.__SAFE_SUPABASE_ENV.authDomain = ${JSON.stringify(authDomain)};`,
+          "})();"
+        ].join("\n")
+      );
+  });
+
   app.use("/assets", express.static(path.join(STATIC_ROOT, "assets")));
   app.use("/js", express.static(path.join(STATIC_ROOT, "js")));
   app.use("/pages", express.static(path.join(STATIC_ROOT, "pages")));
@@ -116,6 +137,78 @@ function sendError(res, status, message, extra = {}) {
   // Mantém compatibilidade: alguns trechos do front leem `message`,
   // e partes mais antigas podem ler `error`.
   return res.status(status).json({ message, error: message, ...extra });
+}
+
+function isoDateInTimeZone(tz) {
+  // Retorna YYYY-MM-DD para o fuso informado (evita "virar o dia" por UTC).
+  // 'sv-SE' formata como ISO-like (YYYY-MM-DD).
+  try {
+    return new Intl.DateTimeFormat("sv-SE", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date());
+  } catch {
+    // Fallback: data local do servidor
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+}
+
+function toBrDate(dateStr) {
+  if (!dateStr) return null;
+  const raw = String(dateStr).trim();
+  // Aceita DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) return raw;
+  // Aceita YYYY-MM-DD
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const [, yyyy, mm, dd] = m;
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  // Tenta parsear (último recurso)
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function extractFirstArray(value, maxDepth = 4) {
+  // O frontend espera um array de "consultas". O SOC pode embrulhar isso em objetos.
+  // Tentamos encontrar o primeiro array plausível em alguns campos comuns.
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object" || maxDepth <= 0) return null;
+
+  const preferredKeys = [
+    "dados",
+    "data",
+    "registros",
+    "results",
+    "resultado",
+    "itens",
+    "items",
+    "lista",
+    "list"
+  ];
+
+  for (const k of preferredKeys) {
+    if (Object.prototype.hasOwnProperty.call(value, k)) {
+      const found = extractFirstArray(value[k], maxDepth - 1);
+      if (found) return found;
+    }
+  }
+
+  for (const v of Object.values(value)) {
+    const found = extractFirstArray(v, maxDepth - 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 // Healthcheck
@@ -287,9 +380,80 @@ app.patch("/api/usuarios/:id/senha", async (req, res) => {
   }
 });
 
-// SOC: este projeto não possui integração real; retornamos vazio por padrão.
-// Se você tiver a integração, dá pra plugar aqui.
-app.get("/api/soc", (_req, res) => res.json([]));
+// SOC: proxy para o endpoint exportadados (somente do dia).
+// Configuração via env para não versionar credenciais:
+// - SOC_EMPRESA, SOC_CODIGO, SOC_CHAVE, SOC_CODIGO_USUARIO_AGENDA
+// - (opcional) SOC_EXPORT_URL (default https://ws1.soc.com.br/WebSoc/exportadados)
+// - (opcional) SOC_TIMEZONE (default America/Sao_Paulo)
+app.get("/api/soc", async (req, res) => {
+  const SOC_EXPORT_URL = process.env.SOC_EXPORT_URL || "https://ws1.soc.com.br/WebSoc/exportadados";
+  const SOC_TIMEZONE = process.env.SOC_TIMEZONE || "America/Sao_Paulo";
+
+  // Defaults (os mesmos da URL fornecida). Em produção, prefira sobrescrever via env.
+  const empresa = process.env.SOC_EMPRESA || "1566278";
+  const codigo = process.env.SOC_CODIGO || "206605";
+  const chave = process.env.SOC_CHAVE || "4b5a356e0526d14128f6";
+  const codigoUsuarioAgenda = process.env.SOC_CODIGO_USUARIO_AGENDA || "2576657";
+
+  // O front manda ?data=YYYY-MM-DD. Se não vier, usa "hoje" no fuso configurado.
+  const isoDate = req.query?.data ? String(req.query.data).trim() : isoDateInTimeZone(SOC_TIMEZONE);
+  const brDate = toBrDate(isoDate);
+  if (!brDate) {
+    return sendError(res, 400, "Parâmetro 'data' inválido. Use YYYY-MM-DD ou DD/MM/YYYY.", { data: isoDate });
+  }
+
+  const parametro = {
+    empresa: String(empresa),
+    codigo: String(codigo),
+    chave: String(chave),
+    tipoSaida: "json",
+    codigoUsuarioAgenda: String(codigoUsuarioAgenda),
+    dataInicial: brDate,
+    dataFinal: brDate
+  };
+
+  const url = `${SOC_EXPORT_URL}?parametro=${encodeURIComponent(JSON.stringify(parametro))}`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        // Ajuda alguns proxies/WAF a não bloquearem por user-agent vazio.
+        "user-agent": "safe-atendimento/1.0"
+      }
+    }).finally(() => clearTimeout(timeoutId));
+
+    const contentType = response.headers.get("content-type") || "";
+    const bodyText = await response.text();
+
+    if (!response.ok) {
+      return sendError(res, response.status, "Erro ao consultar SOC", {
+        status: response.status,
+        statusText: response.statusText,
+        contentType,
+        // Retorna um trecho para debug sem “spammar”:
+        bodySnippet: bodyText.slice(0, 800)
+      });
+    }
+
+    // Tenta JSON; se falhar, devolve o texto bruto (alguns erros do SOC vêm em texto).
+    try {
+      const json = JSON.parse(bodyText);
+      // Se vier um objeto "embrulhado", tenta normalizar para array (compat com o frontend).
+      const arr = extractFirstArray(json);
+      return res.json(arr || []);
+    } catch {
+      return res.type("text/plain").send(bodyText);
+    }
+  } catch (e) {
+    const msg = e?.name === "AbortError" ? "Timeout ao consultar SOC" : "Falha ao consultar SOC";
+    return sendError(res, 502, msg, { detail: String(e?.message || e) });
+  }
+});
 
 // Listar todas as senhas
 app.get("/api/senhas", async (_req, res) => {
@@ -399,7 +563,7 @@ app.patch("/api/senhas/:senha", async (req, res) => {
     const updates = [];
     const params = [];
 
-    const allowedStatus = new Set(["cadastro", "pendente", "atendida"]);
+    const allowedStatus = new Set(["cadastro", "pendente", "em_atendimento", "atendida"]);
     if (status !== undefined && !allowedStatus.has(status)) {
       return sendError(res, 400, "Status inválido", { allowed: Array.from(allowedStatus) });
     }
@@ -432,6 +596,19 @@ app.patch("/api/senhas/:senha", async (req, res) => {
     if (medicoAtendendoEmail !== undefined) {
       updates.push("medicoAtendendoEmail = ?");
       params.push(medicoAtendendoEmail);
+    }
+
+    // Regra: se um médico "chamou" (medicoAtendendo preenchido) e não veio status explícito,
+    // automaticamente tira da fila pública marcando como em_atendimento.
+    if (
+      status === undefined &&
+      medicoAtendendo !== undefined &&
+      medicoAtendendo != null &&
+      String(medicoAtendendo).trim().length > 0 &&
+      existing.status !== "atendida"
+    ) {
+      updates.push("status = ?");
+      params.push("em_atendimento");
     }
     if (encaminhamento !== undefined) {
       updates.push("encaminhamento_json = ?");
@@ -558,7 +735,7 @@ app.post("/api/encaminhamento", async (req, res) => {
     await run(
       db,
       `UPDATE senhas
-       SET encaminhamento_json = ?, status = 'pendente', data = ?
+       SET encaminhamento_json = ?, status = 'pendente', medicoAtendendo = NULL, medicoAtendendoEmail = NULL, data = ?
        WHERE senha = ?`,
       [JSON.stringify(payload), nowIso(), senha]
     );
