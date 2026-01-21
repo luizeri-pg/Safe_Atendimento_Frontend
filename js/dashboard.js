@@ -128,7 +128,7 @@ function getSOCUrl(data) {
                     const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
                         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
                             ? 'http://localhost:3000/api'
-                            : 'https://safeatendimento-production.up.railway.app/api');
+                            : `${window.location.origin}/api`);
                     
                     const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
                     const userId = loggedUser.id || loggedUser.email;
@@ -437,7 +437,7 @@ function getSOCUrl(data) {
                     const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
                         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
                             ? 'http://localhost:3000/api'
-                            : 'https://safeatendimento-production.up.railway.app/api');
+                            : `${window.location.origin}/api`);
                     
                     const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
                     const userId = loggedUser.id || loggedUser.email;
@@ -1419,7 +1419,7 @@ function getSOCUrl(data) {
                     const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
                         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
                             ? 'http://localhost:3000/api'
-                            : 'https://safeatendimento-production.up.railway.app/api');
+                            : `${window.location.origin}/api`);
                     
                     // Buscar dados reais das senhas
                     const response = await fetch(`${API_BASE_URL}/senhas`);

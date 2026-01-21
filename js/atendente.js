@@ -8,9 +8,10 @@
         const isLocalhost = window.location.hostname === 'localhost' || 
                            window.location.hostname === '127.0.0.1' ||
                            window.location.hostname === '';
-        return isLocalhost 
+        // Em produção, por padrão usamos o mesmo domínio do frontend (front+back no mesmo serviço).
+        return isLocalhost
           ? 'http://localhost:3000/api/senhas'
-          : 'https://safeatendimento-production.up.railway.app/api/senhas';
+          : `${window.location.origin}/api/senhas`;
       }
       
       const API_URL = getAPIUrl();

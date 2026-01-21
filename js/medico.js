@@ -13,7 +13,7 @@
         
         const url = isLocalhost 
           ? 'http://localhost:3000/api/senhas'
-          : 'https://safeatendimento-production.up.railway.app/api/senhas';
+          : `${window.location.origin}/api/senhas`;
         
         return url;
       }
@@ -663,7 +663,7 @@
                                  window.location.hostname === '';
               const baseURL = isLocalhost 
                 ? 'http://localhost:3000/api'
-                : 'https://safeatendimento-production.up.railway.app/api';
+                : `${window.location.origin}/api`;
               usuariosURL = `${baseURL}/usuarios`;
             }
             
@@ -808,7 +808,7 @@
                                window.location.hostname === '';
             const baseURL = (window.API_CONFIG && window.API_CONFIG.BASE_URL) 
               ? window.API_CONFIG.BASE_URL
-              : (isLocalhost ? "http://localhost:3000/api" : "https://safeatendimento-production.up.railway.app/api");
+              : (isLocalhost ? "http://localhost:3000/api" : `${window.location.origin}/api`);
             
             const res = await fetch(`${baseURL}/encaminhamento`, {
               method: 'POST',

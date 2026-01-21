@@ -16,7 +16,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
-*.log
 
 # IDE
 .vscode/
@@ -38,17 +37,14 @@ logs/
 .cache/
 .parcel-cache/
 
-<<<<<<< HEAD
 # Servidor local temporário
 .python-http-server/
 
 # Arquivos temporários
 *.tmp
 *.temp
-=======
 
 # Backend (SQLite)
 backend/*.sqlite
 backend/*.sqlite3
 backend/data.sqlite
->>>>>>> c05d6d6 (Tornar API configurável e adicionar backend mínimo (Railway))

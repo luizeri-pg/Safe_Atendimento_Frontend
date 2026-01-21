@@ -11,7 +11,12 @@ Este diretório contém um backend **Node.js/Express** mínimo, compatível com 
 - `PATCH /api/senhas/:senha`
 - `GET /api/senhas/recentes`
 - `GET /api/senhas/historico`
-- `POST /api/usuarios`
+- `POST /api/usuarios/login`
+- `GET /api/usuarios`
+- `GET /api/usuarios/:id` (id numérico ou e-mail)
+- `PATCH /api/usuarios/:id` (perfil)
+- `PATCH /api/usuarios/:id/senha`
+- `POST /api/usuarios` (compat: cadastra/atualiza senha na fila)
 - `GET /api/exames/:senha`
 - `POST /api/exames`
 - `POST /api/encaminhamento`
@@ -25,14 +30,31 @@ Se você precisa “guardar tudo” com garantia de persistência, o recomendado
 
 ## Rodar local
 
+Recomendado usar Node.js **22.x** (ver `.nvmrc` / `.mise.toml` na raiz do repo).
+
+### Opção A (recomendado): rodar pela raiz (serve front + back juntos)
+
 ```bash
-cd backend
 npm install
 
-npm run start
+npm run dev
 ```
 
 Backend local em `http://127.0.0.1:3000`.
+
+Se você quiser auto-reload, use:
+
+```bash
+npm run dev:watch
+```
+
+### Opção B: rodar só o backend (dentro de `backend/`)
+
+```bash
+cd backend
+npm install
+npm run dev
+```
 
 ## Deploy no Railway (gera o domínio automaticamente)
 

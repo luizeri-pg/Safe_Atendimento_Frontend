@@ -32,6 +32,20 @@ export function initDb(db) {
       )
     `);
 
+    // Migrações leves (SQLite): adicionar colunas opcionais de perfil
+    // Obs: ALTER TABLE ... ADD COLUMN é idempotente se ignorarmos o erro "duplicate column name".
+    const addUserColumn = (col, type) => {
+      db.run(`ALTER TABLE usuarios ADD COLUMN ${col} ${type}`, () => {
+        // ignora erro se coluna já existir
+      });
+    };
+    addUserColumn("firstName", "TEXT");
+    addUserColumn("lastName", "TEXT");
+    addUserColumn("phone", "TEXT");
+    addUserColumn("crm", "TEXT");
+    addUserColumn("specialty", "TEXT");
+    addUserColumn("bio", "TEXT");
+
     // Seed mínimo (para o login do front funcionar sem depender de outro sistema)
     db.run(
       `INSERT OR IGNORE INTO usuarios (email, senha, role, nome) VALUES

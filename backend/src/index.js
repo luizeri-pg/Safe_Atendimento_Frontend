@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { all, get, initDb, openDb, run } from "./db.js";
@@ -9,6 +10,7 @@ import { all, get, initDb, openDb, run } from "./db.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.join(__dirname, "..", "..");
+const CWD_ROOT = process.cwd();
 
 const PORT = Number(process.env.PORT || 3000);
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "..", "data.sqlite");
@@ -20,10 +22,41 @@ app.use(morgan("tiny"));
 app.use(express.json({ limit: "1mb" }));
 
 // Servir frontend (pages/js/assets) no mesmo serviço (Railway)
-app.use("/assets", express.static(path.join(REPO_ROOT, "assets")));
-app.use("/js", express.static(path.join(REPO_ROOT, "js")));
-app.use("/pages", express.static(path.join(REPO_ROOT, "pages")));
-app.get("/", (_req, res) => res.redirect("/pages/index.html"));
+// Importante: dependendo do "root directory" configurado no Railway,
+// o build pode rodar com CWD = repo root OU CWD = backend/.
+function pickStaticRoot() {
+  const candidates = [CWD_ROOT, REPO_ROOT];
+  for (const root of candidates) {
+    const pagesIndex = path.join(root, "pages", "index.html");
+    if (fs.existsSync(pagesIndex)) return root;
+  }
+  return null;
+}
+
+const STATIC_ROOT = pickStaticRoot();
+if (STATIC_ROOT) {
+  app.use("/assets", express.static(path.join(STATIC_ROOT, "assets")));
+  app.use("/js", express.static(path.join(STATIC_ROOT, "js")));
+  app.use("/pages", express.static(path.join(STATIC_ROOT, "pages")));
+  app.get("/", (_req, res) => res.redirect("/pages/index.html"));
+} else {
+  // Se cair aqui, o serviço foi deployado sem os arquivos do frontend no container.
+  // Ajuda a debugar sem "Cannot GET /pages/index.html" genérico.
+  app.get("/", (_req, res) =>
+    res
+      .status(500)
+      .type("text/plain")
+      .send(
+        [
+          "Frontend não encontrado no container.",
+          "Esperado: ./pages/index.html",
+          `CWD_ROOT=${CWD_ROOT}`,
+          `REPO_ROOT=${REPO_ROOT}`,
+          "Dica: no Railway, ajuste o Root Directory para o repo root (não apenas backend/), ou inclua pages/js/assets no deploy."
+        ].join("\n")
+      )
+  );
+}
 
 // CORS: por padrão libera tudo (facilita frontend estático).
 // Se quiser travar, defina SAFE_CORS_ORIGIN="http://127.0.0.1:8000,https://seu-front.com"
@@ -72,6 +105,12 @@ function parseEncaminhamento(row) {
   return copy;
 }
 
+function sendError(res, status, message, extra = {}) {
+  // Mantém compatibilidade: alguns trechos do front leem `message`,
+  // e partes mais antigas podem ler `error`.
+  return res.status(status).json({ message, error: message, ...extra });
+}
+
 // Healthcheck
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -109,6 +148,138 @@ app.get("/api/usuarios", async (_req, res) => {
   }
 });
 
+function normalizeUserKey(param) {
+  const raw = String(param || "").trim();
+  if (!raw) return null;
+  const asInt = Number(raw);
+  if (Number.isInteger(asInt) && asInt > 0) return { kind: "id", value: asInt };
+  return { kind: "email", value: raw.toLowerCase() };
+}
+
+async function getUserByKey(key) {
+  if (!key) return null;
+  if (key.kind === "id") {
+    return await get(
+      db,
+      `SELECT id, email, role, nome, firstName, lastName, phone, crm, specialty, bio
+       FROM usuarios WHERE id = ?`,
+      [key.value]
+    );
+  }
+  return await get(
+    db,
+    `SELECT id, email, role, nome, firstName, lastName, phone, crm, specialty, bio
+     FROM usuarios WHERE lower(email) = ?`,
+    [key.value]
+  );
+}
+
+// Perfil do usuário (o dashboard tenta buscar/atualizar)
+app.get("/api/usuarios/:id", async (req, res) => {
+  try {
+    const key = normalizeUserKey(req.params.id);
+    if (!key) return res.status(400).json({ message: "Identificador de usuário inválido" });
+
+    const user = await getUserByKey(key);
+    if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
+
+    return res.json(user);
+  } catch {
+    return res.status(500).json({ message: "Erro ao carregar usuário" });
+  }
+});
+
+app.patch("/api/usuarios/:id", async (req, res) => {
+  try {
+    const key = normalizeUserKey(req.params.id);
+    if (!key) return res.status(400).json({ message: "Identificador de usuário inválido" });
+
+    const existing = await getUserByKey(key);
+    if (!existing) return res.status(404).json({ message: "Usuário não encontrado" });
+
+    const allowed = {
+      firstName: req.body?.firstName != null ? String(req.body.firstName).trim() : undefined,
+      lastName: req.body?.lastName != null ? String(req.body.lastName).trim() : undefined,
+      email: req.body?.email != null ? String(req.body.email).trim().toLowerCase() : undefined,
+      phone: req.body?.phone != null ? String(req.body.phone).trim() : undefined,
+      crm: req.body?.crm != null ? String(req.body.crm).trim() : undefined,
+      specialty: req.body?.specialty != null ? String(req.body.specialty).trim() : undefined,
+      bio: req.body?.bio != null ? String(req.body.bio).trim() : undefined
+    };
+
+    // Monta UPDATE dinâmico
+    const updates = [];
+    const params = [];
+
+    for (const [k, v] of Object.entries(allowed)) {
+      if (v === undefined) continue;
+      updates.push(`${k} = ?`);
+      params.push(v);
+    }
+
+    // Atualiza "nome" automaticamente se veio first/last (melhor para exibição)
+    const hasFirst = allowed.firstName !== undefined;
+    const hasLast = allowed.lastName !== undefined;
+    if (hasFirst || hasLast) {
+      const first = hasFirst ? allowed.firstName : existing.firstName || "";
+      const last = hasLast ? allowed.lastName : existing.lastName || "";
+      const nome = `${String(first || "").trim()} ${String(last || "").trim()}`.trim() || existing.nome;
+      updates.push("nome = ?");
+      params.push(nome);
+    }
+
+    if (!updates.length) {
+      return res.json(existing);
+    }
+
+    const whereSql = key.kind === "id" ? "id = ?" : "lower(email) = ?";
+    await run(db, `UPDATE usuarios SET ${updates.join(", ")} WHERE ${whereSql}`, [...params, key.value]);
+
+    const updated = await getUserByKey(key);
+    return res.json(updated);
+  } catch (e) {
+    // Se bater UNIQUE (email duplicado), retorna erro amigável
+    const msg = String(e?.message || "");
+    if (msg.includes("UNIQUE") && msg.includes("email")) {
+      return res.status(409).json({ message: "Este e-mail já está em uso" });
+    }
+    return res.status(500).json({ message: "Erro ao atualizar perfil" });
+  }
+});
+
+// Troca de senha (o dashboard tenta usar)
+app.patch("/api/usuarios/:id/senha", async (req, res) => {
+  try {
+    const key = normalizeUserKey(req.params.id);
+    if (!key) return res.status(400).json({ message: "Identificador de usuário inválido" });
+
+    const currentPassword = String(req.body?.currentPassword || "").trim();
+    const newPassword = String(req.body?.newPassword || "").trim();
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Senha atual e nova senha são obrigatórias" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Nova senha deve ter pelo menos 6 caracteres" });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ message: "Nova senha deve ser diferente da atual" });
+    }
+
+    const whereSql = key.kind === "id" ? "id = ?" : "lower(email) = ?";
+    const user = await get(db, `SELECT id, email, senha FROM usuarios WHERE ${whereSql}`, [key.value]);
+    if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
+
+    if (String(user.senha) !== currentPassword) {
+      return res.status(401).json({ message: "Senha atual incorreta" });
+    }
+
+    await run(db, `UPDATE usuarios SET senha = ? WHERE id = ?`, [newPassword, user.id]);
+    return res.json({ ok: true });
+  } catch {
+    return res.status(500).json({ message: "Erro ao alterar senha" });
+  }
+});
+
 // SOC: este projeto não possui integração real; retornamos vazio por padrão.
 // Se você tiver a integração, dá pra plugar aqui.
 app.get("/api/soc", (_req, res) => res.json([]));
@@ -124,7 +295,7 @@ app.get("/api/senhas", async (_req, res) => {
     );
     res.json(rows.map(parseEncaminhamento));
   } catch (e) {
-    res.status(500).json({ error: "Erro ao listar senhas" });
+    sendError(res, 500, "Erro ao listar senhas");
   }
 });
 
@@ -140,7 +311,7 @@ app.get("/api/senhas/recentes", async (_req, res) => {
     );
     res.json(rows.map(parseEncaminhamento));
   } catch {
-    res.status(500).json({ error: "Erro ao listar senhas recentes" });
+    sendError(res, 500, "Erro ao listar senhas recentes");
   }
 });
 
@@ -155,7 +326,7 @@ app.get("/api/senhas/historico", async (_req, res) => {
     );
     res.json(rows.map(parseEncaminhamento));
   } catch {
-    res.status(500).json({ error: "Erro ao carregar histórico" });
+    sendError(res, 500, "Erro ao carregar histórico");
   }
 });
 
@@ -166,7 +337,8 @@ app.post("/api/senhas", async (req, res) => {
     const nome = req.body?.nome ? String(req.body.nome).trim() : null;
     const cpf = req.body?.cpf ? normalizeCpf(req.body.cpf) : null;
 
-    if (!senha) return res.status(400).json({ error: "Campo 'senha' é obrigatório" });
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+    if (senha.length > 50) return sendError(res, 400, "Campo 'senha' é muito longo");
 
     // Se não vier nome/cpf, mantém status cadastro; se vier, pendente (fila)
     const status = nome ? "pendente" : "cadastro";
@@ -188,7 +360,7 @@ app.post("/api/senhas", async (req, res) => {
 
     res.status(201).json(parseEncaminhamento(row));
   } catch (e) {
-    res.status(500).json({ error: "Erro ao criar senha" });
+    sendError(res, 500, "Erro ao criar senha");
   }
 });
 
@@ -196,10 +368,10 @@ app.post("/api/senhas", async (req, res) => {
 app.patch("/api/senhas/:senha", async (req, res) => {
   try {
     const senha = normalizeSenha(req.params.senha);
-    if (!senha) return res.status(400).json({ error: "Senha inválida" });
+    if (!senha) return sendError(res, 400, "Senha inválida");
 
     const existing = await get(db, `SELECT * FROM senhas WHERE senha = ?`, [senha]);
-    if (!existing) return res.status(404).json({ error: "Senha não encontrada" });
+    if (!existing) return sendError(res, 404, "Senha não encontrada");
 
     const nome = req.body?.nome != null ? String(req.body.nome).trim() : undefined;
     const cpf = req.body?.cpf != null ? normalizeCpf(req.body.cpf) : undefined;
@@ -219,6 +391,11 @@ app.patch("/api/senhas/:senha", async (req, res) => {
 
     const updates = [];
     const params = [];
+
+    const allowedStatus = new Set(["cadastro", "pendente", "atendida"]);
+    if (status !== undefined && !allowedStatus.has(status)) {
+      return sendError(res, 400, "Status inválido", { allowed: Array.from(allowedStatus) });
+    }
 
     if (nome !== undefined) {
       updates.push("nome = ?");
@@ -268,7 +445,7 @@ app.patch("/api/senhas/:senha", async (req, res) => {
     );
     res.json(parseEncaminhamento(row));
   } catch (e) {
-    res.status(500).json({ error: "Erro ao atualizar senha" });
+    sendError(res, 500, "Erro ao atualizar senha");
   }
 });
 
@@ -278,7 +455,7 @@ app.post("/api/usuarios", async (req, res) => {
     const senha = normalizeSenha(req.body?.senha);
     const nome = req.body?.nome ? String(req.body.nome).trim() : null;
     const cpf = req.body?.cpf ? normalizeCpf(req.body.cpf) : null;
-    if (!senha) return res.status(400).json({ error: "Campo 'senha' é obrigatório" });
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
 
     // Garante que a senha exista e já fica pendente
     await run(
@@ -302,7 +479,7 @@ app.post("/api/usuarios", async (req, res) => {
     );
     res.status(201).json(parseEncaminhamento(row));
   } catch {
-    res.status(500).json({ error: "Erro ao cadastrar usuário" });
+    sendError(res, 500, "Erro ao cadastrar usuário");
   }
 });
 
@@ -320,7 +497,7 @@ app.get("/api/exames/:senha", async (req, res) => {
     );
     res.json(rows);
   } catch {
-    res.status(500).json({ error: "Erro ao listar exames" });
+    sendError(res, 500, "Erro ao listar exames");
   }
 });
 
@@ -334,8 +511,8 @@ app.post("/api/exames", async (req, res) => {
     const resultado = req.body?.resultado != null ? String(req.body.resultado).trim() : null;
     const observacoes = req.body?.observacoes != null ? String(req.body.observacoes).trim() : null;
 
-    if (!senha) return res.status(400).json({ error: "Campo 'senha' é obrigatório" });
-    if (!tipoExame) return res.status(400).json({ error: "Campo 'tipoExame' é obrigatório" });
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+    if (!tipoExame) return sendError(res, 400, "Campo 'tipoExame' é obrigatório");
 
     await run(
       db,
@@ -346,7 +523,7 @@ app.post("/api/exames", async (req, res) => {
 
     res.status(201).json({ ok: true });
   } catch {
-    res.status(500).json({ error: "Erro ao registrar exame" });
+    sendError(res, 500, "Erro ao registrar exame");
   }
 });
 
@@ -358,11 +535,11 @@ app.post("/api/encaminhamento", async (req, res) => {
     const medicoDestino = req.body?.medicoDestino ? String(req.body.medicoDestino).trim() : null;
     const motivo = req.body?.motivo ? String(req.body.motivo).trim() : null;
 
-    if (!senha) return res.status(400).json({ error: "Campo 'senha' é obrigatório" });
-    if (!medicoDestino) return res.status(400).json({ error: "Campo 'medicoDestino' é obrigatório" });
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+    if (!medicoDestino) return sendError(res, 400, "Campo 'medicoDestino' é obrigatório");
 
     const existing = await get(db, `SELECT senha FROM senhas WHERE senha = ?`, [senha]);
-    if (!existing) return res.status(404).json({ error: "Senha não encontrada" });
+    if (!existing) return sendError(res, 404, "Senha não encontrada");
 
     const payload = {
       medicoOrigem,
@@ -387,7 +564,7 @@ app.post("/api/encaminhamento", async (req, res) => {
     );
     res.status(201).json(parseEncaminhamento(row));
   } catch {
-    res.status(500).json({ error: "Erro ao encaminhar paciente" });
+    sendError(res, 500, "Erro ao encaminhar paciente");
   }
 });
 

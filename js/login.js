@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const API_BASE_URL = window.API_CONFIG?.BASE_URL || 
           (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
             ? 'http://localhost:3000/api'
-            : 'https://safeatendimento-production.up.railway.app/api');
+            : `${window.location.origin}/api`);
         
         // Tentar endpoint de login primeiro
         let loginUrl = `${API_BASE_URL}/usuarios/login`;

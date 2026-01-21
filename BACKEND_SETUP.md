@@ -4,7 +4,7 @@ Este guia mostra como rodar o backend localmente para desenvolvimento do fronten
 
 ## 📋 Pré-requisitos
 
-- Node.js instalado (versão 16 ou superior)
+- Node.js instalado (versão 22 ou superior)
 - npm ou yarn instalado
 - Acesso ao repositório do backend (se tiver)
 
@@ -97,7 +97,7 @@ Se o backend estiver rodando em uma porta diferente de 3000, edite o arquivo `js
 ```javascript
 const API_BASE_URL = isLocalhost 
     ? 'http://localhost:SUA_PORTA/api'  // Altere SUA_PORTA
-    : 'https://safeatendimento-production.up.railway.app/api';
+    : window.location.origin + '/api';
 ```
 
 ### Backend Não Inicia

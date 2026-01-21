@@ -18,6 +18,55 @@ Agora o projeto suporta **rodar frontend e backend no mesmo serviço** (ideal pa
 
 Abra os arquivos HTML diretamente no navegador ou configure um servidor web local.
 
+## Rodar local (recomendado)
+
+### Pré-requisitos
+
+- Node.js **22.x** (o projeto inclui `.nvmrc` e `.mise.toml`)
+
+Se você usa `nvm`:
+
+```bash
+nvm install
+nvm use
+```
+
+Se você usa `mise`:
+
+```bash
+mise install
+```
+
+### Subir o serviço (backend + frontend no mesmo servidor)
+
+Na raiz do repositório:
+
+```bash
+npm install
+npm run dev
+```
+
+- **Frontend**: `http://localhost:3000/pages/index.html`
+- **Health**: `http://localhost:3000/health`
+- **API**: `http://localhost:3000/api/*`
+
+Se você quiser auto-reload, use:
+
+```bash
+npm run dev:watch
+```
+
+### Frontend separado (opcional)
+
+Se você quiser servir apenas os HTML/JS por outra porta:
+
+```bash
+python3 -m http.server 8000
+```
+
+Depois abra `http://localhost:8000/pages/index.html`.  
+O frontend em localhost já aponta a API para `http://localhost:3000/api` automaticamente (via `js/config.js`).
+
 ## Backend (Railway)
 
 Para usar **front + back juntos no Railway** (e gerar um domínio `*.up.railway.app`), use o backend em `backend/` e rode pela raiz do repo:
