@@ -17,7 +17,14 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, "..", "data.sqlite")
 
 const app = express();
 app.disable("x-powered-by");
-app.use(helmet());
+// O frontend atual usa Tailwind via CDN e possui scripts inline.
+// O CSP padrão do helmet bloqueia isso e quebra as páginas estáticas.
+// Se quiser CSP forte no futuro, o ideal é remover CDN/inline scripts do frontend.
+app.use(
+  helmet({
+    contentSecurityPolicy: false
+  })
+);
 app.use(morgan("tiny"));
 app.use(express.json({ limit: "1mb" }));
 
