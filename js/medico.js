@@ -37,9 +37,56 @@
           const supa = window.safeSupabase;
           if (!supa) return null;
           const { data } = await supa.auth.getSession();
-          return data?.session?.access_token || null;
+          const token = data?.session?.access_token || null;
+          if (token) return token;
+
+          // Tentativa extra: se a sessão estiver "muda" no Safari, tenta refresh antes de desistir.
+          if (typeof supa.auth.refreshSession === 'function') {
+            await supa.auth.refreshSession().catch(() => null);
+            const { data: data2 } = await supa.auth.getSession().catch(() => ({ data: null }));
+            return data2?.session?.access_token || null;
+          }
+          return null;
         } catch {
           return null;
+        }
+      }
+
+      function showAuthBanner(message) {
+        try {
+          const id = 'safe-auth-banner';
+          let el = document.getElementById(id);
+          if (!el) {
+            el = document.createElement('div');
+            el.id = id;
+            el.style.position = 'fixed';
+            el.style.left = '12px';
+            el.style.right = '12px';
+            el.style.bottom = '12px';
+            el.style.zIndex = '99999';
+            el.style.padding = '12px 14px';
+            el.style.borderRadius = '12px';
+            el.style.background = 'rgba(17, 24, 39, 0.92)'; // gray-900
+            el.style.color = '#fff';
+            el.style.fontSize = '14px';
+            el.style.fontWeight = '600';
+            el.style.backdropFilter = 'blur(10px)';
+            el.style.boxShadow = '0 10px 25px rgba(0,0,0,0.25)';
+            document.body.appendChild(el);
+          }
+          el.textContent = String(message || '');
+          el.style.display = 'block';
+        } catch {
+          // ignora
+        }
+      }
+
+      function hideAuthBanner() {
+        try {
+          const el = document.getElementById('safe-auth-banner');
+          if (el) el.style.display = 'none';
+        } catch {
+          // ignora
         }
       }
 
@@ -126,13 +173,30 @@
 
       // Guard de acesso: somente perfis de atendimento (consultório/exames)
       (async function enforceAtendimento() {
-        const user = await resolveLoggedUser();
-        const role = normalizeRole(user?.role);
-        if (!role || !SAFE_ALLOWED_ATENDIMENTO_ROLES.has(role)) {
-          window.location.href = 'login.html';
-          return;
+        // Evita redirecionar para login por falhas transitórias de rede/sessão.
+        const maxAttempts = 5;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const user = await resolveLoggedUser();
+          const role = normalizeRole(user?.role);
+          if (role && SAFE_ALLOWED_ATENDIMENTO_ROLES.has(role)) {
+            hideAuthBanner();
+            applyAtendimentoHeader(user);
+            return;
+          }
+
+          const token = await getAccessToken();
+          if (token) {
+            showAuthBanner('Reconectando sua sessão… (se persistir, atualize a página)');
+            // backoff simples
+            await new Promise((r) => setTimeout(r, 250 + attempt * 350));
+            continue;
+          }
+
+          break;
         }
-        applyAtendimentoHeader(user);
+
+        // Sem token/sessão após tentativas: realmente não está autenticado.
+        window.location.href = 'login.html';
       })();
 
       // Verificar se há paciente vindo do atendente e destacar na fila
