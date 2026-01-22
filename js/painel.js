@@ -42,6 +42,7 @@
         try {
           let senhas = [];
           let senhasChamadas = []; // Senhas que foram chamadas pelos médicos
+          let encaminhadosExame = []; // Encaminhados para sala de exame (não é consultório)
           
           if (window.safeSupabase) {
             // Buscar senhas pendentes (fila)
@@ -116,6 +117,13 @@
           const lista = document.getElementById("senhaLista");
           const semSenhas = document.getElementById("semSenhas");
           lista.innerHTML = "";
+
+          function isEncaminhamentoExame(enc) {
+            if (!enc || typeof enc !== 'object') return false;
+            const tipo = String(enc.tipo || '').trim().toLowerCase();
+            const sala = String(enc.salaDestino || '').trim().toLowerCase();
+            return tipo === 'exame' || sala.startsWith('sala de exame');
+          }
           
           // Função auxiliar para obter sala do médico (baseado no nome ou especialidade)
           function obterSalaMedico(medicoNome, especialidade) {
@@ -170,12 +178,54 @@
                       <i class="fas fa-door-open"></i> ${sala}
                     </div>
                     <div style="color: rgba(255,255,255,0.9); font-size: 20px; font-weight: 500;">
-                      está chamando por gentileza
+                      Dirija-se ao consultório
                     </div>
                   </div>
                 </div>
               `;
               
+              lista.appendChild(item);
+            });
+          }
+
+          // Encaminhados para SALA DE EXAME (mostrar logo após "chamadas")
+          if (Array.isArray(senhas) && senhas.length > 0) {
+            encaminhadosExame = senhas
+              .filter((s) => {
+                const nomeOk = s?.nome != null && String(s.nome).trim().length > 0;
+                const status = s?.status != null ? String(s.status).trim() : "";
+                if (!nomeOk || status !== 'pendente') return false;
+                return isEncaminhamentoExame(s.encaminhamento);
+              })
+              .sort((a, b) => new Date(b.data) - new Date(a.data))
+              .slice(0, 10);
+          }
+
+          if (encaminhadosExame.length > 0) {
+            encaminhadosExame.forEach((s) => {
+              const salaExame = String(s?.encaminhamento?.salaDestino || 'Sala de exame').trim() || 'Sala de exame';
+              const item = document.createElement("div");
+              item.className = "senha-item senha-encaminhada-exame";
+              item.style.background = "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)";
+              item.style.color = "white";
+              item.style.border = "3px solid rgba(255,255,255,0.35)";
+              item.style.boxShadow = "0 12px 40px rgba(124, 58, 237, 0.35)";
+
+              item.innerHTML = `
+                <div class="senha-info">
+                  <div class="senha-numero" style="color: white; font-size: 56px;">${s.senha}</div>
+                  <div class="senha-details">
+                    <div class="senha-nome" style="color: white; font-size: 24px; font-weight: 700; margin-bottom: 10px;">${s.nome || "Sem nome"}</div>
+                    <div style="color: rgba(255,255,255,0.95); font-size: 20px; font-weight: 600; margin-bottom: 6px;">
+                      <i class="fas fa-vials"></i> ${salaExame}
+                    </div>
+                    <div style="color: rgba(255,255,255,0.9); font-size: 18px; font-weight: 500;">
+                      Encaminhado para exames
+                    </div>
+                  </div>
+                </div>
+              `;
+
               lista.appendChild(item);
             });
           }
@@ -195,7 +245,9 @@
 
                 const temEncaminhamentoDestino =
                   s?.encaminhamento && s.encaminhamento.medicoDestino && String(s.encaminhamento.medicoDestino).trim().length > 0;
-                return !temEncaminhamentoDestino;
+                const temEncaminhamentoExame = isEncaminhamentoExame(s?.encaminhamento);
+                // Não mostrar na fila geral quando está encaminhado (para médico ou para exame)
+                return !temEncaminhamentoDestino && !temEncaminhamentoExame;
               })
             : [];
 
@@ -232,7 +284,7 @@
           }
           
           // Mostrar mensagem se não houver senhas
-          if (senhasVisiveis.length === 0 && senhasChamadas.length === 0) {
+          if (senhasVisiveis.length === 0 && senhasChamadas.length === 0 && encaminhadosExame.length === 0) {
             semSenhas.style.display = "block";
           } else {
             semSenhas.style.display = "none";

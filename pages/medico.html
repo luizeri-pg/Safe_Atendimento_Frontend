@@ -204,10 +204,20 @@
             </div>
             <div class="modal-body p-6">
               <div class="form-group mb-5">
+                <label for="tipoEncaminhamento" class="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
+                  <i class="fas fa-route text-blue-500 w-4"></i> Tipo de Encaminhamento
+                </label>
+                <select id="tipoEncaminhamento" class="campo-exame w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" onchange="atualizarTipoEncaminhamento()">
+                  <option value="medico">Outro médico</option>
+                  <option value="exame">Sala de exames</option>
+                </select>
+              </div>
+
+              <div class="form-group mb-5" id="groupMedicoDestino">
                 <label for="medicoDestino" class="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
                   <i class="fas fa-user-md text-blue-500 w-4"></i> Médico de Destino
                 </label>
-                <select id="medicoDestino" class="campo-exame w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" required>
+                <select id="medicoDestino" class="campo-exame w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10">
                   <option value="">Selecione o médico</option>
                   <option value="Dr. Maria Santos" data-sala="Sala 01">Dr. Maria Santos - Sala 01</option>
                   <option value="Dr. João Silva" data-sala="Sala 02">Dr. João Silva - Sala 02</option>
@@ -219,6 +229,18 @@
                   <option value="Dr. Marcos Pereira" data-sala="Sala 08">Dr. Marcos Pereira - Sala 08</option>
                   <option value="Dra. Juliana Rocha" data-sala="Sala 09">Dra. Juliana Rocha - Sala 09</option>
                   <option value="Dr. Antonio Ferreira" data-sala="Sala 10">Dr. Antonio Ferreira - Sala 10</option>
+                </select>
+              </div>
+
+              <div class="form-group mb-5" id="groupSalaExameDestino" style="display:none;">
+                <label for="salaExameDestino" class="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
+                  <i class="fas fa-vials text-blue-500 w-4"></i> Sala de Exame
+                </label>
+                <select id="salaExameDestino" class="campo-exame w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10">
+                  <option value="">Selecione a sala</option>
+                  <option value="Sala de exame 1">Sala de exame 1</option>
+                  <option value="Sala de exame 2">Sala de exame 2</option>
+                  <option value="Sala de exame 3">Sala de exame 3</option>
                 </select>
               </div>
               

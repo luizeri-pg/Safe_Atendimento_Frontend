@@ -36,6 +36,7 @@ logs/
 # Cache
 .cache/
 .parcel-cache/
+.npm-cache/
 
 # Servidor local temporário
 .python-http-server/

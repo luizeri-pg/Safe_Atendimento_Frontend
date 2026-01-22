@@ -304,6 +304,7 @@ begin
   end if;
 
   v_enc := jsonb_build_object(
+    'tipo', 'medico',
     'medicoOrigemId', v_profile_id,
     'medicoDestinoId', p_medico_destino_id,
     'motivo', nullif(trim(coalesce(p_motivo,'')),''),
@@ -330,7 +331,74 @@ begin
     v_row.id,
     'ENCAMINHADO',
     v_profile_id,
-    jsonb_build_object('senha', v_row.senha, 'medicoDestinoId', p_medico_destino_id)
+    jsonb_build_object('senha', v_row.senha, 'medicoDestinoId', p_medico_destino_id, 'salaDestino', p_sala_destino)
+  );
+
+  return v_row;
+end;
+$$;
+
+-- 4.5.1) Encaminhar para exames (médico) - sem médico destino
+create or replace function public.encaminhar_para_exame(
+  p_senha text,
+  p_sala_destino text,
+  p_motivo text default null
+)
+returns public.senhas
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+  v_profile_id uuid;
+  v_row public.senhas;
+  v_enc jsonb;
+  v_sala text;
+begin
+  v_profile_id := auth.uid();
+  select public.current_role() into v_role;
+
+  if v_role is null then
+    raise exception 'profile_not_found' using errcode = '42501';
+  end if;
+  if v_role <> 'medico' then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  v_sala := nullif(trim(coalesce(p_sala_destino,'')),'');
+  if v_sala is null then
+    raise exception 'invalid_room' using errcode = '22023';
+  end if;
+
+  v_enc := jsonb_build_object(
+    'tipo', 'exame',
+    'medicoOrigemId', v_profile_id,
+    'motivo', nullif(trim(coalesce(p_motivo,'')),''),
+    'salaDestino', v_sala,
+    'aceito', true,
+    'createdAt', now()
+  );
+
+  update public.senhas s
+     set status = 'pendente',
+         medico_atendendo_id = null,
+         encaminhamento = v_enc
+   where s.senha = trim(p_senha)
+     and s.status = 'em_atendimento'
+     and s.medico_atendendo_id = v_profile_id
+  returning * into v_row;
+
+  if not found then
+    raise exception 'not_found_or_not_owner' using errcode = '42501';
+  end if;
+
+  insert into public.senha_eventos (senha_id, tipo, actor_profile_id, payload)
+  values (
+    v_row.id,
+    'ENCAMINHADO',
+    v_profile_id,
+    jsonb_build_object('senha', v_row.senha, 'tipo', 'exame', 'salaDestino', v_sala)
   );
 
   return v_row;

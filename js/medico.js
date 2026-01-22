@@ -88,6 +88,7 @@
               const rawEnc = s.encaminhamento || null;
               const enc = rawEnc
                 ? {
+                    tipo: rawEnc.tipo || null,
                     // compat com código legado (que espera strings)
                     medicoOrigem: rawEnc.medicoOrigem || rawEnc.medicoOrigemId || null,
                     medicoDestino: rawEnc.medicoDestino || rawEnc.medicoDestinoId || null,
@@ -132,6 +133,14 @@
               return false;
             }
             
+            // Encaminhado para SALA DE EXAME não deve aparecer na fila de médicos
+            if (s.encaminhamento) {
+              const tipo = String(s.encaminhamento.tipo || '').trim().toLowerCase();
+              const sala = String(s.encaminhamento.salaDestino || '').trim().toLowerCase();
+              const isExame = tipo === 'exame' || sala.startsWith('sala de exame');
+              if (isExame) return false;
+            }
+
             // Se o Supabase estiver ativo, usamos o campo medico_atendendo_id (fonte de verdade)
             if (window.safeSupabase) {
               if (s.medico_atendendo_id) {
@@ -900,6 +909,25 @@
         const modalEncaminhamento = document.getElementById('modalEncaminhamento');
         modalEncaminhamento.classList.remove("hidden");
         modalEncaminhamento.classList.add("flex");
+
+        // Default: encaminhar para médico
+        const tipoEl = document.getElementById('tipoEncaminhamento');
+        if (tipoEl && !tipoEl.value) tipoEl.value = 'medico';
+        atualizarTipoEncaminhamento();
+      }
+
+      function atualizarTipoEncaminhamento() {
+        const tipo = document.getElementById('tipoEncaminhamento')?.value || 'medico';
+        const groupMedico = document.getElementById('groupMedicoDestino');
+        const groupExame = document.getElementById('groupSalaExameDestino');
+
+        if (tipo === 'exame') {
+          if (groupMedico) groupMedico.style.display = 'none';
+          if (groupExame) groupExame.style.display = '';
+        } else {
+          if (groupMedico) groupMedico.style.display = '';
+          if (groupExame) groupExame.style.display = 'none';
+        }
       }
 
       function fecharEncaminhamento() {
@@ -907,21 +935,37 @@
         modalEncaminhamento.classList.add("hidden");
         modalEncaminhamento.classList.remove("flex");
         // Limpa campos
+        const tipoEl = document.getElementById('tipoEncaminhamento');
+        if (tipoEl) tipoEl.value = 'medico';
         document.getElementById('medicoDestino').value = '';
+        const salaExameEl = document.getElementById('salaExameDestino');
+        if (salaExameEl) salaExameEl.value = '';
         document.getElementById('motivoEncaminhamento').value = '';
       }
 
       async function confirmarEncaminhamento() {
         if (!pacienteAtual) return;
-        
-        const medicoDestinoSelect = document.getElementById('medicoDestino');
-        const medicoDestino = medicoDestinoSelect.value;
-        const salaDestino = medicoDestinoSelect.options[medicoDestinoSelect.selectedIndex]?.dataset?.sala || 'Sala não informada';
+
+        const tipo = document.getElementById('tipoEncaminhamento')?.value || 'medico';
         const motivo = document.getElementById('motivoEncaminhamento').value;
-        
-        if (!medicoDestino) {
-          alert('Por favor, informe o médico de destino.');
-          return;
+
+        let medicoDestino = null;
+        let salaDestino = null;
+
+        if (tipo === 'exame') {
+          salaDestino = document.getElementById('salaExameDestino')?.value || '';
+          if (!salaDestino) {
+            alert('Por favor, selecione a sala de exame.');
+            return;
+          }
+        } else {
+          const medicoDestinoSelect = document.getElementById('medicoDestino');
+          medicoDestino = medicoDestinoSelect.value;
+          salaDestino = medicoDestinoSelect.options[medicoDestinoSelect.selectedIndex]?.dataset?.sala || 'Sala não informada';
+          if (!medicoDestino) {
+            alert('Por favor, informe o médico de destino.');
+            return;
+          }
         }
         
         try {
@@ -929,23 +973,33 @@
           
           // Preparar dados do encaminhamento
           const encaminhamentoData = {
+            tipo: tipo,
             medicoOrigem: medicoOrigem,
             medicoDestino: medicoDestino,
             salaDestino: salaDestino,
             motivo: motivo,
             data: new Date().toISOString(),
-            aceito: false // Inicialmente não aceito, precisa ser aceito pelo médico de destino
+            aceito: tipo === 'medico' ? false : true // Exames não precisam de aceite
           };
           
           if (window.safeSupabase) {
-            const medicoDestinoId = medicoDestino; // no modo Supabase, value deve ser uuid
-            const { error } = await window.safeSupabase.rpc('encaminhar_senha', {
-              p_senha: pacienteAtual.senha,
-              p_medico_destino_id: medicoDestinoId,
-              p_motivo: motivo,
-              p_sala_destino: salaDestino
-            });
-            if (error) throw error;
+            if (tipo === 'exame') {
+              const { error } = await window.safeSupabase.rpc('encaminhar_para_exame', {
+                p_senha: pacienteAtual.senha,
+                p_sala_destino: salaDestino,
+                p_motivo: motivo
+              });
+              if (error) throw error;
+            } else {
+              const medicoDestinoId = medicoDestino; // no modo Supabase, value deve ser uuid
+              const { error } = await window.safeSupabase.rpc('encaminhar_senha', {
+                p_senha: pacienteAtual.senha,
+                p_medico_destino_id: medicoDestinoId,
+                p_motivo: motivo,
+                p_sala_destino: salaDestino
+              });
+              if (error) throw error;
+            }
           } else {
             // Legacy: mantém comportamento existente (PATCH no backend)
             try {
@@ -1028,6 +1082,9 @@
           alert(`Erro ao encaminhar paciente: ${e.message}. Verifique o console para mais detalhes.`);
         }
       }
+
+      // Expor para o HTML
+      window.atualizarTipoEncaminhamento = atualizarTipoEncaminhamento;
 
       // Função para aceitar encaminhamento
       async function aceitarEncaminhamento(senha) {
