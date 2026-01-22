@@ -367,13 +367,10 @@
           function matchesExamRoom(enc) {
             const sala = normalizeRoom(enc?.salaDestino || '');
             if (!sala) return false;
-            if (myRole === 'enfermagem') {
-              return sala.includes('exame 1') || sala.includes('exames 1') || sala.includes('exame 2') || sala.includes('exames 2');
-            }
             if (myRole === 'fono') {
               return sala.includes('exame 3') || sala.includes('exames 3');
             }
-            return false;
+            return true;
           }
 
           // Fonte de dados: Supabase (preferencial) ou backend antigo (fallback)
@@ -501,8 +498,9 @@
               return false;
             }
 
-            // Enfermagem/Fono: trabalham APENAS com encaminhamentos de exame (por sala)
-            if (myRole === 'enfermagem' || myRole === 'fono') {
+            // Fono: trabalha APENAS com encaminhamentos de exame (por sala)
+            // Enfermagem usa a MESMA fila do médico (não restringe a exames).
+            if (myRole === 'fono') {
               if (!isEncaminhamentoExame(s.encaminhamento)) return false;
               if (!matchesExamRoom(s.encaminhamento)) return false;
               if (window.safeSupabase && s.medico_atendendo_id) return false;
@@ -738,13 +736,10 @@
           function matchesExamRoom(enc) {
             const sala = normalizeRoom(enc?.salaDestino || '');
             if (!sala) return false;
-            if (myRole === 'enfermagem') {
-              return sala.includes('exame 1') || sala.includes('exames 1') || sala.includes('exame 2') || sala.includes('exames 2');
-            }
             if (myRole === 'fono') {
               return sala.includes('exame 3') || sala.includes('exames 3');
             }
-            return false;
+            return true;
           }
 
           let proximo = null;
@@ -761,7 +756,7 @@
             const lista = Array.isArray(data) ? data : [];
             proximo = lista.find((s) => {
               const enc = s.encaminhamento || null;
-              if (myRole === 'enfermagem' || myRole === 'fono') {
+              if (myRole === 'fono') {
                 if (!isEncaminhamentoExame(enc)) return false;
                 if (!matchesExamRoom(enc)) return false;
                 return true;
@@ -781,8 +776,9 @@
             proximo = senhas.find(s => {
               if (s.status !== 'pendente') return false;
 
-              // Enfermagem/Fono (legacy): somente exames por sala
-              if (myRole === 'enfermagem' || myRole === 'fono') {
+              // Fono (legacy): somente exames por sala
+              // Enfermagem usa a MESMA fila do médico (não restringe a exames).
+              if (myRole === 'fono') {
                 if (!isEncaminhamentoExame(s.encaminhamento)) return false;
                 if (!matchesExamRoom(s.encaminhamento)) return false;
                 return true;

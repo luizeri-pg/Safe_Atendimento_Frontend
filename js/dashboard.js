@@ -175,6 +175,26 @@ function applyRoleUI(user) {
     const quickAtendente = document.getElementById('quickAtendente');
     const quickMedico = document.getElementById('quickMedico');
 
+    // Ajustar rótulos do painel de atendimento conforme o perfil (mesma tela `medico.html`)
+    const atendimentoLabel =
+        role === 'enfermagem'
+            ? 'Painel Enfermagem'
+            : role === 'fono'
+                ? 'Painel Fono'
+                : 'Painel Médico';
+    try {
+        if (linkMedico) {
+            const span = linkMedico.querySelector('span');
+            if (span) span.textContent = atendimentoLabel;
+        }
+        if (quickMedico) {
+            const span = quickMedico.querySelector('span');
+            if (span) span.textContent = atendimentoLabel;
+        }
+    } catch {
+        // ignora
+    }
+
     if (isMedico) {
         if (linkAtendente) linkAtendente.style.display = 'none';
         if (quickAtendente) quickAtendente.style.display = 'none';

@@ -20,7 +20,10 @@
       (function enforceAtendente() {
         try {
           const logged = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-          if (!logged?.role || logged.role !== 'atendente') {
+          const role = String(logged?.role || '').trim().toLowerCase();
+          // Permitir que Enfermagem use este painel também (triagem/fila).
+          const allowed = new Set(['atendente', 'enfermagem']);
+          if (!role || !allowed.has(role)) {
             // Evita acesso cruzado
             window.location.href = 'login.html';
           }
