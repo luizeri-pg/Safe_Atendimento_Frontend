@@ -9,7 +9,11 @@ async function ensureLoggedUser() {
     // 1) Preferência: dados já persistidos no localStorage
     try {
         const stored = JSON.parse(localStorage.getItem('loggedUser') || 'null');
-        if (stored && stored.role) return stored;
+        if (stored && stored.role) {
+            const normalizedRole = String(stored.role || '').trim().toLowerCase();
+            if (!normalizedRole) return null;
+            return { ...stored, role: normalizedRole };
+        }
     } catch {
         // segue
     }
@@ -73,7 +77,7 @@ async function ensureLoggedUser() {
             id: profile.id,
             username: profile.username,
             nome: profile.nome,
-            role: profile.role,
+            role: String(profile.role || '').trim().toLowerCase(),
         };
         localStorage.setItem('loggedUser', JSON.stringify(normalized));
         return normalized;
@@ -139,7 +143,7 @@ function displayNameForUser(user) {
     const nome = String(user?.nome || '').trim();
     const username = String(user?.username || '').trim();
     const base = nome || username || 'Usuário';
-    if (String(user?.role) === 'medico') {
+    if (String(user?.role || '').trim().toLowerCase() === 'medico') {
         // Evitar duplicar "Dr." se já tiver
         return /^dr\.?\s/i.test(base) ? base : `Dr. ${base}`;
     }
@@ -147,7 +151,7 @@ function displayNameForUser(user) {
 }
 
 function applyRoleUI(user) {
-    const role = String(user?.role || '');
+    const role = String(user?.role || '').trim().toLowerCase();
     const isMedico = role === 'medico' || role === 'enfermagem' || role === 'fono';
     const isAtendente = role === 'atendente';
 

@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const refreshToken = String(data?.refresh_token || '').trim();
         const expiresIn = Number(data?.expires_in || 0) || 0;
         const profile = data?.profile || null;
-        const role = String(profile?.role || '').trim();
+        const role = String(profile?.role || '').trim().toLowerCase();
 
         if (!accessToken || !refreshToken || !profile || !role) {
           showError('Resposta de login inválida. Tente novamente.');
@@ -86,7 +86,11 @@ document.addEventListener('DOMContentLoaded', () => {
 function redirectToDashboard(role) {
   // Novo fluxo: sempre cai no Dashboard, que adapta UI por perfil.
   // As páginas específicas continuam protegidas pelos seus próprios guards.
-  if (role === 'atendente' || role === 'medico' || role === 'enfermagem' || role === 'fono') {
+  if (role === 'enfermagem') {
+    window.location.href = 'medico.html';
+    return;
+  }
+  if (role === 'atendente' || role === 'medico' || role === 'fono') {
     window.location.href = 'dashboard.html';
     return;
   }
