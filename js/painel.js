@@ -299,8 +299,63 @@
         }
       }
 
-      // Atualização automática a cada 2 segundos
-      setInterval(carregarSenhas, 2000);
+      // Realtime (Supabase): atualiza o painel automaticamente.
+      // Mantém polling como fallback (caso Realtime não esteja ativo/configurado).
+      let __safeSenhasPollId = null;
+      let __safeSenhasRealtimeChannel = null;
+      let __safeSenhasRefreshTimer = null;
+
+      function startSenhasPolling(ms) {
+        try {
+          if (__safeSenhasPollId) clearInterval(__safeSenhasPollId);
+        } catch {}
+        __safeSenhasPollId = setInterval(carregarSenhas, ms);
+      }
+
+      function scheduleSenhasRefresh() {
+        try {
+          if (__safeSenhasRefreshTimer) clearTimeout(__safeSenhasRefreshTimer);
+        } catch {}
+        __safeSenhasRefreshTimer = setTimeout(() => {
+          carregarSenhas();
+        }, 250);
+      }
+
+      function setupRealtimeSenhas() {
+        const supa = window.safeSupabase;
+        if (!supa || typeof supa.channel !== 'function') return false;
+        if (window.__SAFE_REALTIME_SENHAS_PAINEL_BOUND) return true;
+        window.__SAFE_REALTIME_SENHAS_PAINEL_BOUND = true;
+
+        try {
+          __safeSenhasRealtimeChannel = supa
+            .channel('safe-senhas-painel')
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'senhas' },
+              () => scheduleSenhasRefresh()
+            )
+            .subscribe();
+
+          window.addEventListener('beforeunload', () => {
+            try {
+              if (__safeSenhasRealtimeChannel && typeof supa.removeChannel === 'function') {
+                supa.removeChannel(__safeSenhasRealtimeChannel);
+              }
+            } catch {}
+          });
+          return true;
+        } catch (e) {
+          console.warn('[Realtime] Falha ao assinar mudanças de senhas (painel):', e);
+          return false;
+        }
+      }
+
+      // Polling fallback:
+      // - Sem Realtime: 2s (como antes)
+      // - Com Realtime: 10s (só para resiliência)
+      const hasRealtime = setupRealtimeSenhas();
+      startSenhasPolling(hasRealtime ? 10000 : 2000);
       
       // Carrega dados iniciais
       carregarSenhas();

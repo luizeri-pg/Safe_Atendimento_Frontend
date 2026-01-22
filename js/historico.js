@@ -115,8 +115,63 @@
         }
       }
 
-      // Atualização automática a cada 5 segundos
-      setInterval(carregarHistorico, 5000);
+      // Realtime (Supabase): atualiza o histórico automaticamente.
+      // Mantém polling como fallback (caso Realtime não esteja ativo/configurado).
+      let __safeHistoricoPollId = null;
+      let __safeSenhasRealtimeChannel = null;
+      let __safeHistoricoRefreshTimer = null;
+
+      function startHistoricoPolling(ms) {
+        try {
+          if (__safeHistoricoPollId) clearInterval(__safeHistoricoPollId);
+        } catch {}
+        __safeHistoricoPollId = setInterval(carregarHistorico, ms);
+      }
+
+      function scheduleHistoricoRefresh() {
+        try {
+          if (__safeHistoricoRefreshTimer) clearTimeout(__safeHistoricoRefreshTimer);
+        } catch {}
+        __safeHistoricoRefreshTimer = setTimeout(() => {
+          carregarHistorico();
+        }, 400);
+      }
+
+      function setupRealtimeHistorico() {
+        const supa = window.safeSupabase;
+        if (!supa || typeof supa.channel !== 'function') return false;
+        if (window.__SAFE_REALTIME_SENHAS_HISTORICO_BOUND) return true;
+        window.__SAFE_REALTIME_SENHAS_HISTORICO_BOUND = true;
+
+        try {
+          __safeSenhasRealtimeChannel = supa
+            .channel('safe-senhas-historico')
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'senhas' },
+              () => scheduleHistoricoRefresh()
+            )
+            .subscribe();
+
+          window.addEventListener('beforeunload', () => {
+            try {
+              if (__safeSenhasRealtimeChannel && typeof supa.removeChannel === 'function') {
+                supa.removeChannel(__safeSenhasRealtimeChannel);
+              }
+            } catch {}
+          });
+          return true;
+        } catch (e) {
+          console.warn('[Realtime] Falha ao assinar mudanças de senhas (historico):', e);
+          return false;
+        }
+      }
+
+      // Polling fallback:
+      // - Sem Realtime: 5s (como antes)
+      // - Com Realtime: 20s (só para resiliência)
+      const hasRealtime = setupRealtimeHistorico();
+      startHistoricoPolling(hasRealtime ? 20000 : 5000);
       
       // Carrega dados iniciais
       carregarHistorico();

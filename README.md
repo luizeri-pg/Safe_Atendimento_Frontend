@@ -78,6 +78,20 @@ python3 -m http.server 8000
 Depois abra `http://localhost:8000/pages/index.html`.  
 O frontend em localhost já aponta a API para `http://localhost:3000/api` automaticamente (via `js/config.js`).
 
+## Tempo real (múltiplos usuários ao mesmo tempo)
+
+Para **3–4 pessoas usarem simultaneamente** (atendente + médico/enfermagem + painel) e todos verem a fila atualizar “na hora”, o frontend assina mudanças da tabela `public.senhas` via **Supabase Realtime** (com polling como fallback).
+
+### Habilitar Realtime no Supabase
+
+No Supabase, garanta que a tabela `public.senhas` esteja habilitada para Realtime (replicação). Você pode fazer isso via SQL:
+
+```sql
+alter publication supabase_realtime add table public.senhas;
+```
+
+Obs.: se você também quiser eventos ao vivo do log, pode habilitar `public.senha_eventos` do mesmo jeito.
+
 ## Backend (Railway)
 
 Para usar **front + back juntos no Railway** (e gerar um domínio `*.up.railway.app`), use o backend em `backend/` e rode pela raiz do repo:

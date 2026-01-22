@@ -526,3 +526,23 @@ with check (
   and (nome is null or length(trim(nome)) = 0)
 );
 
+-- =========================
+-- 6) Realtime (opcional, recomendado)
+-- =========================
+-- Para sincronizar a fila entre múltiplos usuários (atendente/médico/painel),
+-- habilite Realtime na tabela `public.senhas`.
+--
+-- Observação: em projetos Supabase, a publication `supabase_realtime` já existe.
+do $$
+begin
+  -- Evita erro se já estiver adicionada
+  alter publication supabase_realtime add table public.senhas;
+exception
+  when duplicate_object then
+    null;
+  when undefined_object then
+    -- Em ambientes fora do Supabase, a publication pode não existir.
+    null;
+end;
+$$;
+

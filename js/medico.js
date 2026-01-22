@@ -26,6 +26,10 @@
         inicioConsulta: null
       };
 
+      function normalizeRole(role) {
+        return String(role || '').trim().toLowerCase();
+      }
+
       const SAFE_ALLOWED_ATENDIMENTO_ROLES = new Set(['medico', 'enfermagem', 'fono']);
 
       async function getAccessToken() {
@@ -54,8 +58,13 @@
         // 1) Preferência: dados persistidos no localStorage
         try {
           const stored = JSON.parse(localStorage.getItem('loggedUser') || 'null');
-          const role = String(stored?.role || '').trim();
-          if (role && SAFE_ALLOWED_ATENDIMENTO_ROLES.has(role)) return stored;
+          const role = normalizeRole(stored?.role);
+          if (role && SAFE_ALLOWED_ATENDIMENTO_ROLES.has(role)) {
+            // Garante que salvamos sempre normalizado (evita falhas por capitalização/whitespace)
+            const normalizedStored = { ...stored, role };
+            localStorage.setItem('loggedUser', JSON.stringify(normalizedStored));
+            return normalizedStored;
+          }
         } catch {
           // segue
         }
@@ -81,7 +90,7 @@
             id: profile.id,
             username: profile.username,
             nome: profile.nome,
-            role: profile.role,
+            role: normalizeRole(profile.role),
           };
           localStorage.setItem('loggedUser', JSON.stringify(normalized));
           return normalized;
@@ -92,7 +101,7 @@
       }
 
       function applyAtendimentoHeader(user) {
-        const role = String(user?.role || '').trim();
+        const role = normalizeRole(user?.role);
         const base = String(user?.nome || user?.username || '').trim();
 
         let displayName = base;
@@ -118,7 +127,7 @@
       // Guard de acesso: somente perfis de atendimento (consultório/exames)
       (async function enforceAtendimento() {
         const user = await resolveLoggedUser();
-        const role = String(user?.role || '').trim();
+        const role = normalizeRole(user?.role);
         if (!role || !SAFE_ALLOWED_ATENDIMENTO_ROLES.has(role)) {
           window.location.href = 'login.html';
           return;
@@ -149,7 +158,7 @@
           const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
           const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
           const myId = loggedUser?.id || null;
-          const myRole = String(loggedUser?.role || '').trim();
+          const myRole = normalizeRole(loggedUser?.role);
 
           function normalizeRoom(s) {
             return String(s || '').trim().toLowerCase();
@@ -448,7 +457,7 @@
                   </div>
                 `;
                 botaoAcao = `
-                  <button class="btn-aceitar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-sm font-semibold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="aceitarEncaminhamento('${s.senha}')">
+                  <button type="button" class="btn-aceitar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-sm font-semibold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="aceitarEncaminhamento('${s.senha}')">
                     <i class="fas fa-check"></i> Aceitar
                   </button>
                 `;
@@ -460,14 +469,14 @@
                   </div>
                 `;
                 botaoAcao = `
-                  <button class="btn-chamar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-lg font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="chamarPaciente('${s.senha}')">
+                  <button type="button" class="btn-chamar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-lg font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="chamarPaciente('${s.senha}')">
                     Chamar
                   </button>
                 `;
               } else {
                 // Paciente normal
                 botaoAcao = `
-                  <button class="btn-chamar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-lg font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="chamarPaciente('${s.senha}')">
+                  <button type="button" class="btn-chamar bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-lg font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40" onclick="chamarPaciente('${s.senha}')">
                     Chamar
                   </button>
                 `;
@@ -536,7 +545,7 @@
           const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
           const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
           const myId = loggedUser?.id || null;
-          const myRole = String(loggedUser?.role || '').trim();
+          const myRole = normalizeRole(loggedUser?.role);
 
           function normalizeRoom(s) {
             return String(s || '').trim().toLowerCase();
@@ -1472,8 +1481,63 @@
       // Expor função globalmente
       window.aceitarEncaminhamento = aceitarEncaminhamento;
 
-      // Atualização automática a cada 3 segundos
-      setInterval(carregarFila, 3000);
+      // Realtime (Supabase): atualiza a fila entre múltiplos usuários.
+      // Mantém polling como fallback (caso Realtime não esteja ativo/configurado).
+      let __safeSenhasPollId = null;
+      let __safeSenhasRealtimeChannel = null;
+      let __safeSenhasRefreshTimer = null;
+
+      function startSenhasPolling(ms) {
+        try {
+          if (__safeSenhasPollId) clearInterval(__safeSenhasPollId);
+        } catch {}
+        __safeSenhasPollId = setInterval(carregarFila, ms);
+      }
+
+      function scheduleFilaRefresh() {
+        try {
+          if (__safeSenhasRefreshTimer) clearTimeout(__safeSenhasRefreshTimer);
+        } catch {}
+        __safeSenhasRefreshTimer = setTimeout(() => {
+          carregarFila();
+        }, 250);
+      }
+
+      function setupRealtimeSenhas() {
+        const supa = window.safeSupabase;
+        if (!supa || typeof supa.channel !== 'function') return false;
+        if (window.__SAFE_REALTIME_SENHAS_MEDICO_BOUND) return true;
+        window.__SAFE_REALTIME_SENHAS_MEDICO_BOUND = true;
+
+        try {
+          __safeSenhasRealtimeChannel = supa
+            .channel('safe-senhas-medico')
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'senhas' },
+              () => scheduleFilaRefresh()
+            )
+            .subscribe();
+
+          window.addEventListener('beforeunload', () => {
+            try {
+              if (__safeSenhasRealtimeChannel && typeof supa.removeChannel === 'function') {
+                supa.removeChannel(__safeSenhasRealtimeChannel);
+              }
+            } catch {}
+          });
+          return true;
+        } catch (e) {
+          console.warn('[Realtime] Falha ao assinar mudanças de senhas (medico):', e);
+          return false;
+        }
+      }
+
+      // Polling fallback:
+      // - Sem Realtime: 3s (como antes)
+      // - Com Realtime: 10s (só para resiliência)
+      const hasRealtime = setupRealtimeSenhas();
+      startSenhasPolling(hasRealtime ? 10000 : 3000);
       
       // Carrega dados iniciais
       carregarFila();
