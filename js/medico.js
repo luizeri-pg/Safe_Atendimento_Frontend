@@ -60,7 +60,7 @@
           // segue
         }
 
-        // 2) Recuperar pelo Supabase (evita "voltar pro login" se o localStorage estiver inconsistente)
+        // 2) Recuperar pelo Supabase (auth) + profile via proxy (evita CORS no Safari)
         const supa = window.safeSupabase;
         if (!supa) return null;
         try {
@@ -69,12 +69,13 @@
           const userId = sessionData?.session?.user?.id;
           if (!userId) return null;
 
-          const { data: profile, error: profileErr } = await supa
-            .from('profiles')
-            .select('id, username, nome, role')
-            .eq('id', userId)
-            .single();
-          if (profileErr || !profile?.role) return null;
+          const profRes = await supaProxyFetch(
+            `/profiles?select=id,username,nome,role&id=eq.${encodeURIComponent(userId)}&limit=1`
+          );
+          if (!profRes.ok) return null;
+          const profArr = await profRes.json().catch(() => []);
+          const profile = Array.isArray(profArr) ? profArr[0] : profArr;
+          if (!profile?.role) return null;
 
           const normalized = {
             id: profile.id,
@@ -928,17 +929,14 @@
       // Função para buscar médicos/usuários ativos
       async function carregarMedicosAtivos() {
         try {
-          // Preferir Supabase (perfis) quando disponível
-          if (window.safeSupabase) {
+          // Em produção: usar proxy do backend (evita CORS no Safari)
+          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
             const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
             const myId = loggedUser?.id || null;
 
-            const { data: profiles, error } = await window.safeSupabase
-              .from('profiles')
-              .select('id,nome,role,specialty')
-              .eq('role', 'medico')
-              .order('nome', { ascending: true });
-            if (error) throw error;
+            const res = await supaProxyFetch(`/profiles?select=id,nome,role,specialty&role=eq.medico&order=nome.asc`);
+            if (!res.ok) throw new Error(`Falha ao listar médicos via proxy (${res.status})`);
+            const profiles = await res.json().catch(() => []);
 
             const medicos = (Array.isArray(profiles) ? profiles : []).filter((p) => !myId || String(p.id) !== String(myId));
 
