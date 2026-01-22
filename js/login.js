@@ -22,79 +22,55 @@ document.addEventListener('DOMContentLoaded', () => {
         const supa = window.safeSupabase;
         const authDomain = window.SAFE_SUPABASE_CONFIG?.authDomain || 'safe.local';
 
-        if (supa) {
-          const email = `${String(username).trim().toLowerCase()}@${authDomain}`;
-          const { data, error } = await supa.auth.signInWithPassword({ email, password });
-          if (error || !data?.user) {
-            showError(error?.message || 'Credenciais inválidas');
-            return;
-          }
-
-          const { data: profile, error: profileErr } = await supa
-            .from('profiles')
-            .select('id, username, nome, role')
-            .eq('id', data.user.id)
-            .single();
-
-          if (profileErr || !profile) {
-            // Se não houver profile, desloga para evitar sessão "meio configurada"
-            await supa.auth.signOut().catch(() => {});
-            showError('Perfil não encontrado no Supabase (tabela profiles).');
-            return;
-          }
-
-          const role = String(profile.role || '').trim();
-          if (!role) {
-            await supa.auth.signOut().catch(() => {});
-            showError('Perfil sem role definido (tabela profiles).');
-            return;
-          }
-
-          localStorage.setItem(
-            'loggedUser',
-            JSON.stringify({
-              id: profile.id,
-              username: profile.username,
-              nome: profile.nome,
-              role: role,
-            })
+        // A partir de agora NÃO usamos SQLite/back-end para login.
+        // Se o Supabase não estiver configurado (anon key ausente), mostramos um erro claro.
+        if (!supa) {
+          showError(
+            'Supabase não configurado no frontend. Defina SUPABASE_URL e SUPABASE_ANON_KEY (ou use querystring/localStorage) e recarregue a página.'
           );
-
-          showSuccess('Login realizado com sucesso!');
-          setTimeout(() => redirectToDashboard(role), 500);
           return;
         }
 
-        // Fallback: backend antigo (SQLite)
-        const API_BASE_URL =
-          window.API_CONFIG?.BASE_URL ||
-          (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === ''
-            ? 'http://localhost:3000/api'
-            : `${window.location.origin}/api`);
-
-        const email = username; // compat: backend antigo ainda usa "email"
-        const loginUrl = `${API_BASE_URL}/usuarios/login`;
-        const response = await fetch(loginUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-
-        if (response.ok) {
-          const userData = await response.json();
-          localStorage.setItem('loggedUser', JSON.stringify({
-            email,
-            role: userData.role,
-            nome: userData.nome || userData.name,
-            id: userData.id
-          }));
-          showSuccess('Login realizado com sucesso!');
-          setTimeout(() => redirectToDashboard(userData.role), 1000);
+        const email = `${String(username).trim().toLowerCase()}@${authDomain}`;
+        const { data, error } = await supa.auth.signInWithPassword({ email, password });
+        if (error || !data?.user) {
+          showError(error?.message || 'Credenciais inválidas');
           return;
         }
 
-        const errorData = await response.json().catch(() => ({}));
-        showError(errorData.message || 'Credenciais inválidas');
+        const { data: profile, error: profileErr } = await supa
+          .from('profiles')
+          .select('id, username, nome, role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileErr || !profile) {
+          // Se não houver profile, desloga para evitar sessão "meio configurada"
+          await supa.auth.signOut().catch(() => {});
+          showError('Perfil não encontrado no Supabase (tabela profiles).');
+          return;
+        }
+
+        const role = String(profile.role || '').trim();
+        if (!role) {
+          await supa.auth.signOut().catch(() => {});
+          showError('Perfil sem role definido (tabela profiles).');
+          return;
+        }
+
+        localStorage.setItem(
+          'loggedUser',
+          JSON.stringify({
+            id: profile.id,
+            username: profile.username,
+            nome: profile.nome,
+            role: role,
+          })
+        );
+
+        showSuccess('Login realizado com sucesso!');
+        setTimeout(() => redirectToDashboard(role), 500);
+        return;
       } catch (error) {
         console.error('Erro ao fazer login:', error);
         showError('Erro ao conectar com o servidor. Verifique sua conexão.');
