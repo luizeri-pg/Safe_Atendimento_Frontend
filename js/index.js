@@ -212,7 +212,9 @@ async function buscarPorCPF() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           senha: senhaGerada,
-          cpf: cpfCadastro
+          cpf: cpfCadastro,
+          status: "cadastro",
+          soc_status: "nao_encontrado"
         })
       });
       if (!res.ok) {
@@ -252,7 +254,10 @@ async function confirmarAtendimento() {
       body: JSON.stringify({
         senha: String(senha),
         cpf: cpfLimpo || undefined,
-        nome: paciente.NOMEFUNCIONARIO || undefined
+        // IMPORTANTE: não gravar nome aqui para não “furar” o fluxo de triagem
+        // e para compatibilidade com policy de insert anônimo no Supabase.
+        status: "cadastro",
+        soc_status: "encontrado"
       })
     });
     if (!res.ok) {

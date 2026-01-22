@@ -594,8 +594,14 @@ app.post("/api/senhas", async (req, res) => {
     if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
     if (senha.length > 50) return sendError(res, 400, "Campo 'senha' é muito longo");
 
-    // Se não vier nome/cpf, mantém status cadastro; se vier, pendente (fila)
-    const status = nome ? "pendente" : "cadastro";
+    // Status pode vir explícito (ex.: totem força cadastro).
+    // Caso não venha, inferimos: se tem nome -> pendente; senão -> cadastro.
+    const requestedStatus = req.body?.status ? String(req.body.status).trim() : null;
+    const status = requestedStatus || (nome ? "pendente" : "cadastro");
+    const allowedStatus = new Set(["cadastro", "pendente"]);
+    if (!allowedStatus.has(status)) {
+      return sendError(res, 400, "Status inválido", { allowed: Array.from(allowedStatus) });
+    }
 
     // OBRIGATÓRIO: Salvar apenas no Supabase (sem fallback para SQLite)
     const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
@@ -613,7 +619,10 @@ app.post("/api/senhas", async (req, res) => {
         soc_status: socStatus
       };
       
-      if (nome) supabasePayload.nome = nome;
+      // Se o status for cadastro, não gravamos nome aqui:
+      // - mantém o fluxo correto (atendente faz triagem e libera)
+      // - compatível com policy de insert anônimo no Supabase (nome precisa ser null/vazio)
+      if (nome && status !== "cadastro") supabasePayload.nome = nome;
       if (cpf) supabasePayload.cpf = cpf;
 
       const supabaseResponse = await fetch(`${supabaseUrl}/rest/v1/senhas`, {
