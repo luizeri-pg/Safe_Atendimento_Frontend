@@ -27,11 +27,39 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null unique,
   nome text not null,
-  role text not null check (role in ('atendente','medico','admin')),
+  role text not null check (role in ('atendente','medico','enfermagem','fono','admin')),
   crm text,
   specialty text,
   created_at timestamptz not null default now()
 );
+
+-- Se a tabela já existir com constraint antiga, substitui de forma segura.
+do $$
+declare
+  c_name text;
+begin
+  select con.conname into c_name
+  from pg_constraint con
+  join pg_class rel on rel.oid = con.conrelid
+  join pg_namespace nsp on nsp.oid = rel.relnamespace
+  where nsp.nspname = 'public'
+    and rel.relname = 'profiles'
+    and con.contype = 'c'
+    and pg_get_constraintdef(con.oid) ilike '%role%'
+    and pg_get_constraintdef(con.oid) ilike '%in%';
+
+  if c_name is not null then
+    execute format('alter table public.profiles drop constraint %I', c_name);
+  end if;
+exception when undefined_table then
+  -- primeira execução (sem tabela) não precisa fazer nada
+  null;
+end;
+$$;
+
+alter table public.profiles
+  add constraint profiles_role_check
+  check (role in ('atendente','medico','enfermagem','fono','admin'));
 
 create table if not exists public.senhas (
   id uuid primary key default gen_random_uuid(),
@@ -204,7 +232,7 @@ begin
   if v_role is null then
     raise exception 'profile_not_found' using errcode = '42501';
   end if;
-  if v_role <> 'medico' then
+  if v_role not in ('medico','enfermagem','fono') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
@@ -251,7 +279,7 @@ begin
   if v_role is null then
     raise exception 'profile_not_found' using errcode = '42501';
   end if;
-  if v_role <> 'medico' then
+  if v_role not in ('medico','enfermagem','fono') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
@@ -299,7 +327,7 @@ begin
   if v_role is null then
     raise exception 'profile_not_found' using errcode = '42501';
   end if;
-  if v_role <> 'medico' then
+  if v_role not in ('medico','enfermagem','fono') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
@@ -362,7 +390,7 @@ begin
   if v_role is null then
     raise exception 'profile_not_found' using errcode = '42501';
   end if;
-  if v_role <> 'medico' then
+  if v_role not in ('medico','enfermagem','fono') then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 

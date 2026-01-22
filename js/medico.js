@@ -26,11 +26,13 @@
         inicioConsulta: null
       };
 
-      // Guard de acesso: médico não pode acessar painel do atendente e vice-versa
-      (function enforceMedico() {
+      // Guard de acesso: somente perfis de atendimento (consultório/exames)
+      (function enforceAtendimento() {
         try {
           const logged = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-          if (!logged?.role || logged.role !== 'medico') {
+          const role = String(logged?.role || '').trim();
+          const allowed = new Set(['medico', 'enfermagem', 'fono']);
+          if (!role || !allowed.has(role)) {
             window.location.href = 'login.html';
           }
         } catch {
@@ -38,16 +40,28 @@
         }
       })();
 
-      // Configuração do médico baseada no login
+      // Identidade do usuário (médico/enfermagem/fono) baseada no login
       const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-      const medicoConfig = {
-        'medico@safe.com': { nome: 'Dr. João Silva', especialidade: 'Clínico Geral' },
-        'medico2@safe.com': { nome: 'Dra. Maria Santos', especialidade: 'Cardiologia' }
-      };
-      
-      const medico = medicoConfig[loggedUser.email] || medicoConfig['medico@safe.com'];
-      document.getElementById('medicoNome').textContent = medico.nome;
-      document.getElementById('medicoEspecialidade').textContent = medico.especialidade;
+      const loggedRole = String(loggedUser?.role || '').trim();
+      function displayNomeAtendimento() {
+        const base = String(loggedUser?.nome || loggedUser?.username || '').trim();
+        if (loggedRole === 'medico') {
+          if (!base) return 'Dr. Médico';
+          return /^dr\.?\s/i.test(base) ? base : `Dr. ${base}`;
+        }
+        if (base) return base;
+        if (loggedRole === 'enfermagem') return 'Enfermagem';
+        if (loggedRole === 'fono') return 'Fonoaudiologia';
+        return 'Atendimento';
+      }
+      function displayLocalAtendimento() {
+        if (loggedRole === 'medico') return 'Consultório';
+        if (loggedRole === 'enfermagem') return 'Exames 1 e 2';
+        if (loggedRole === 'fono') return 'Exames 3';
+        return 'Atendimento';
+      }
+      document.getElementById('medicoNome').textContent = displayNomeAtendimento();
+      document.getElementById('medicoEspecialidade').textContent = displayLocalAtendimento();
 
       // Verificar se há paciente vindo do atendente e destacar na fila
       function verificarPacienteAtendente() {
@@ -72,10 +86,58 @@
           const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
           const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
           const myId = loggedUser?.id || null;
+          const myRole = String(loggedUser?.role || '').trim();
+
+          function normalizeRoom(s) {
+            return String(s || '').trim().toLowerCase();
+          }
+          function isEncaminhamentoExame(enc) {
+            if (!enc) return false;
+            const tipo = String(enc.tipo || '').trim().toLowerCase();
+            const sala = normalizeRoom(enc.salaDestino || '');
+            return tipo === 'exame' || sala.startsWith('sala de exame') || sala.startsWith('exames');
+          }
+          function matchesExamRoom(enc) {
+            const sala = normalizeRoom(enc?.salaDestino || '');
+            if (!sala) return false;
+            if (myRole === 'enfermagem') {
+              return sala.includes('exame 1') || sala.includes('exames 1') || sala.includes('exame 2') || sala.includes('exames 2');
+            }
+            if (myRole === 'fono') {
+              return sala.includes('exame 3') || sala.includes('exames 3');
+            }
+            return false;
+          }
 
           // Fonte de dados: Supabase (preferencial) ou backend antigo (fallback)
           let senhas = [];
           if (window.safeSupabase) {
+            // Cache simples de profiles (para resolver ids → nomes sem fazer N queries)
+            if (!window.__SAFE_PROFILES_CACHE) {
+              window.__SAFE_PROFILES_CACHE = { fetchedAt: 0, byId: {} };
+            }
+            async function getProfilesById() {
+              const cache = window.__SAFE_PROFILES_CACHE;
+              const now = Date.now();
+              if (cache.fetchedAt && now - cache.fetchedAt < 60_000 && cache.byId) return cache.byId;
+              const { data: profiles, error: profErr } = await window.safeSupabase
+                .from('profiles')
+                .select('id,nome')
+                .order('nome', { ascending: true });
+              if (profErr) {
+                // Se falhar, mantém o cache antigo (se houver) e segue
+                return cache.byId || {};
+              }
+              const byId = {};
+              (Array.isArray(profiles) ? profiles : []).forEach((p) => {
+                if (p?.id) byId[String(p.id)] = String(p.nome || '').trim() || String(p.id);
+              });
+              cache.fetchedAt = now;
+              cache.byId = byId;
+              return byId;
+            }
+
+            const profilesById = await getProfilesById();
             const { data, error } = await window.safeSupabase
               .from('senhas')
               .select('senha,nome,cpf,status,created_at,updated_at,called_at,encaminhamento,medico_atendendo_id')
@@ -86,18 +148,20 @@
 
             senhas = (Array.isArray(data) ? data : []).map((s) => {
               const rawEnc = s.encaminhamento || null;
+              const origemId = rawEnc?.medicoOrigemId || null;
+              const destinoId = rawEnc?.medicoDestinoId || null;
               const enc = rawEnc
                 ? {
                     tipo: rawEnc.tipo || null,
                     // compat com código legado (que espera strings)
-                    medicoOrigem: rawEnc.medicoOrigem || rawEnc.medicoOrigemId || null,
-                    medicoDestino: rawEnc.medicoDestino || rawEnc.medicoDestinoId || null,
+                    medicoOrigem: rawEnc.medicoOrigem || (origemId ? (profilesById[String(origemId)] || origemId) : null),
+                    medicoDestino: rawEnc.medicoDestino || (destinoId ? (profilesById[String(destinoId)] || destinoId) : null),
                     salaDestino: rawEnc.salaDestino || null,
                     motivo: rawEnc.motivo || null,
                     aceito: rawEnc.aceito === true,
                     // ids explícitos (para comparações)
-                    medicoOrigemId: rawEnc.medicoOrigemId || null,
-                    medicoDestinoId: rawEnc.medicoDestinoId || null,
+                    medicoOrigemId: origemId,
+                    medicoDestinoId: destinoId,
                     createdAt: rawEnc.createdAt || null,
                     acceptedAt: rawEnc.acceptedAt || null
                   }
@@ -184,13 +248,18 @@
             if (s.status !== 'pendente') {
               return false;
             }
+
+            // Enfermagem/Fono: trabalham APENAS com encaminhamentos de exame (por sala)
+            if (myRole === 'enfermagem' || myRole === 'fono') {
+              if (!isEncaminhamentoExame(s.encaminhamento)) return false;
+              if (!matchesExamRoom(s.encaminhamento)) return false;
+              if (window.safeSupabase && s.medico_atendendo_id) return false;
+              return true;
+            }
             
             // Encaminhado para SALA DE EXAME não deve aparecer na fila de médicos
             if (s.encaminhamento) {
-              const tipo = String(s.encaminhamento.tipo || '').trim().toLowerCase();
-              const sala = String(s.encaminhamento.salaDestino || '').trim().toLowerCase();
-              const isExame = tipo === 'exame' || sala.startsWith('sala de exame');
-              if (isExame) return false;
+              if (isEncaminhamentoExame(s.encaminhamento)) return false;
             }
 
             // Se o Supabase estiver ativo, usamos o campo medico_atendendo_id (fonte de verdade)
@@ -403,6 +472,28 @@
           const medicoAtualNome = document.getElementById('medicoNome').textContent.trim();
           const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
           const myId = loggedUser?.id || null;
+          const myRole = String(loggedUser?.role || '').trim();
+
+          function normalizeRoom(s) {
+            return String(s || '').trim().toLowerCase();
+          }
+          function isEncaminhamentoExame(enc) {
+            if (!enc) return false;
+            const tipo = String(enc.tipo || '').trim().toLowerCase();
+            const sala = normalizeRoom(enc.salaDestino || '');
+            return tipo === 'exame' || sala.startsWith('sala de exame') || sala.startsWith('exames');
+          }
+          function matchesExamRoom(enc) {
+            const sala = normalizeRoom(enc?.salaDestino || '');
+            if (!sala) return false;
+            if (myRole === 'enfermagem') {
+              return sala.includes('exame 1') || sala.includes('exames 1') || sala.includes('exame 2') || sala.includes('exames 2');
+            }
+            if (myRole === 'fono') {
+              return sala.includes('exame 3') || sala.includes('exames 3');
+            }
+            return false;
+          }
 
           let proximo = null;
           if (window.safeSupabase) {
@@ -418,6 +509,14 @@
             const lista = Array.isArray(data) ? data : [];
             proximo = lista.find((s) => {
               const enc = s.encaminhamento || null;
+              if (myRole === 'enfermagem' || myRole === 'fono') {
+                if (!isEncaminhamentoExame(enc)) return false;
+                if (!matchesExamRoom(enc)) return false;
+                return true;
+              }
+
+              // Médico (consultório): não chamar encaminhamentos de exame
+              if (isEncaminhamentoExame(enc)) return false;
               const destino = enc?.medicoDestinoId || enc?.medicoDestino || null;
               if (destino && myId && String(destino) !== String(myId)) return false;
               return true;
@@ -429,7 +528,17 @@
             // Buscar próximo paciente disponível (não está sendo atendido por outro médico)
             proximo = senhas.find(s => {
               if (s.status !== 'pendente') return false;
+
+              // Enfermagem/Fono (legacy): somente exames por sala
+              if (myRole === 'enfermagem' || myRole === 'fono') {
+                if (!isEncaminhamentoExame(s.encaminhamento)) return false;
+                if (!matchesExamRoom(s.encaminhamento)) return false;
+                return true;
+              }
               
+              // Médico (consultório): não chamar encaminhamentos de exame
+              if (isEncaminhamentoExame(s.encaminhamento)) return false;
+
               if (s.medicoAtendendo && s.medicoAtendendo !== medicoAtualNome) {
                 if (loggedUser.email && s.medicoAtendendoEmail && s.medicoAtendendoEmail !== loggedUser.email) {
                   return false;

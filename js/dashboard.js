@@ -72,13 +72,23 @@ function displayNameForUser(user) {
 
 function applyRoleUI(user) {
     const role = String(user?.role || '');
-    const isMedico = role === 'medico';
+    const isMedico = role === 'medico' || role === 'enfermagem' || role === 'fono';
     const isAtendente = role === 'atendente';
 
     const displayName = displayNameForUser(user);
     setText('userName', displayName);
     setText('topbarUserName', displayName);
-    setText('userRole', isMedico ? 'Médico' : isAtendente ? 'Atendente' : 'Usuário');
+    const roleLabel =
+        role === 'medico'
+            ? 'Médico'
+            : role === 'enfermagem'
+                ? 'Enfermagem'
+                : role === 'fono'
+                    ? 'Fonoaudiologia'
+                    : isAtendente
+                        ? 'Atendente'
+                        : 'Usuário';
+    setText('userRole', roleLabel);
 
     const initials = initialsFromName(displayName.replace(/^dr\.?\s*/i, ''));
     setText('topbarUserAvatar', initials);
