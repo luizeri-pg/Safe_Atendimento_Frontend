@@ -257,42 +257,36 @@ async function confirmarAtendimento() {
   // Usa o código do funcionário do SOC como senha
   senha = paciente.CODIGOFUNCIONARIO || "N/A";
 
+  let registrado = false;
   try {
-    // Para totem, gravamos somente como "cadastro" (atendente valida/triagem e libera).
+    // CPF encontrado no SOC: o paciente deve entrar direto na fila (pendente),
+    // com nome/cpf para aparecer no painel e poder ser chamado pelo médico.
     const cpfLimpo = String(paciente.CPFFUNCIONARIO || '').replace(/\D/g, '');
-    // Preferir Supabase direto (RLS permite INSERT anon em cadastro).
-    if (window.safeSupabase) {
-      const { error } = await window.safeSupabase.from('senhas').insert([
-        {
-          senha: String(senha),
-          cpf: cpfLimpo || undefined,
-          status: 'cadastro',
-          soc_status: 'encontrado'
-        }
-      ]);
-      if (error) throw error;
-    } else {
-      // Fallback: backend como proxy
-      const res = await fetch(`${API_BASE_URL}/senhas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          senha: String(senha),
-          cpf: cpfLimpo || undefined,
-          // IMPORTANTE: não gravar nome aqui para não “furar” o fluxo de triagem
-          status: "cadastro",
-          soc_status: "encontrado"
-        })
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Falha ao registrar senha");
-      }
+    const nomeSOC = paciente.NOMEFUNCIONARIO != null ? String(paciente.NOMEFUNCIONARIO).trim() : "";
+
+    // O backend usa service role no Supabase, então consegue gravar como "pendente".
+    const res = await fetch(`${API_BASE_URL}/senhas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        senha: String(senha),
+        cpf: cpfLimpo || undefined,
+        nome: nomeSOC || undefined,
+        status: nomeSOC ? "pendente" : "cadastro",
+        soc_status: "encontrado"
+      })
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || "Falha ao registrar senha");
     }
-    // erro silencioso
+    registrado = true;
   } catch (e) {
-    console.warn('Falha ao registrar senha no Supabase:', e);
+    console.warn('Falha ao registrar senha no backend:', e);
+    alert('Erro ao registrar sua senha. Verifique a conexão e tente novamente.');
+    return;
   }
+  if (!registrado) return;
   cpfNaoEncontradoNoSOC = false; // CPF foi encontrado no SOC, então reset da flag
   step = 3;
   render();

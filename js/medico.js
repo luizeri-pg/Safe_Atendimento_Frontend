@@ -78,7 +78,7 @@
           if (window.safeSupabase) {
             const { data, error } = await window.safeSupabase
               .from('senhas')
-              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
+              .select('senha,nome,cpf,status,created_at,updated_at,called_at,encaminhamento,medico_atendendo_id')
               .in('status', ['pendente', 'em_atendimento', 'atendida'])
               .order('updated_at', { ascending: false })
               .limit(200);
@@ -108,7 +108,7 @@
                 nome: s.nome,
                 cpf: s.cpf,
                 status: s.status,
-                data: s.updated_at || s.created_at,
+                data: s.called_at || s.updated_at || s.created_at,
                 encaminhamento: enc,
                 medicoAtendendo:
                   s.medico_atendendo_id && myId && s.medico_atendendo_id === myId
@@ -125,6 +125,58 @@
             const url = getAPIUrl();
             const res = await fetch(url);
             senhas = await res.json();
+          }
+
+          // Se existir paciente EM ATENDIMENTO deste médico no banco,
+          // re-hidrata o "Paciente Atual" após reload (para permitir encaminhar/finalizar).
+          if (window.safeSupabase && myId) {
+            const ativo = (Array.isArray(senhas) ? senhas : []).find(
+              (s) => s && s.status === 'em_atendimento' && s.medico_atendendo_id && String(s.medico_atendendo_id) === String(myId)
+            );
+
+            if (ativo && (!pacienteAtual || pacienteAtual.senha !== ativo.senha)) {
+              pacienteAtual = {
+                senha: ativo.senha,
+                nome: ativo.nome,
+                cpf: ativo.cpf,
+                status: ativo.status,
+                data: ativo.data,
+                encaminhamento: ativo.encaminhamento || null,
+                medico_atendendo_id: ativo.medico_atendendo_id || null
+              };
+              estatisticas.inicioConsulta = ativo.data ? new Date(ativo.data) : new Date();
+
+              document.getElementById('senhaAtual').textContent = pacienteAtual.senha;
+              document.getElementById('nomeAtual').textContent = pacienteAtual.nome || 'Sem nome';
+              document.getElementById('cpfAtual').textContent = pacienteAtual.cpf || 'Sem CPF';
+              const pacienteAtualEl = document.getElementById('pacienteAtual');
+              pacienteAtualEl.classList.remove('hidden');
+              pacienteAtualEl.classList.add('block');
+
+              document.getElementById('btnFinalizarConsulta').disabled = false;
+              document.getElementById('btnEncaminharPaciente').disabled = false;
+              document.getElementById('btnChamarProximo').disabled = true;
+
+              const acoesPaciente = document.getElementById('acoesPaciente');
+              acoesPaciente.classList.remove("hidden");
+              acoesPaciente.classList.add("block");
+            }
+
+            // Se não há mais ativo no banco, mas a UI ficou com um paciente antigo,
+            // limpa para evitar travar botões.
+            if (!ativo && pacienteAtual && pacienteAtual.medico_atendendo_id && String(pacienteAtual.medico_atendendo_id) === String(myId)) {
+              pacienteAtual = null;
+              estatisticas.inicioConsulta = null;
+              const pacienteAtualEl = document.getElementById('pacienteAtual');
+              pacienteAtualEl.classList.add('hidden');
+              pacienteAtualEl.classList.remove('block');
+              document.getElementById('btnFinalizarConsulta').disabled = true;
+              document.getElementById('btnEncaminharPaciente').disabled = true;
+              document.getElementById('btnChamarProximo').disabled = false;
+              const acoesPaciente = document.getElementById('acoesPaciente');
+              acoesPaciente.classList.add("hidden");
+              acoesPaciente.classList.remove("block");
+            }
           }
           
           // Filtra senhas pendentes E que foram encaminhadas para este médico OU não foram encaminhadas
