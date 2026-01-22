@@ -206,20 +206,33 @@ async function buscarPorCPF() {
     const cpfCadastro = cpfLimpo || cpf;
     const senhaGerada = gerarSenhaSemAgendamento();
     try {
-      // Sempre usar o backend como proxy (evita problemas de RLS/CORS)
-      const res = await fetch(`${API_BASE_URL}/senhas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          senha: senhaGerada,
-          cpf: cpfCadastro,
-          status: "cadastro",
-          soc_status: "nao_encontrado"
-        })
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Falha ao registrar senha");
+      // Preferir Supabase direto (RLS permite INSERT anon em cadastro).
+      if (window.safeSupabase) {
+        const { error } = await window.safeSupabase.from('senhas').insert([
+          {
+            senha: senhaGerada,
+            cpf: cpfCadastro,
+            status: 'cadastro',
+            soc_status: 'nao_encontrado'
+          }
+        ]);
+        if (error) throw error;
+      } else {
+        // Fallback: backend como proxy
+        const res = await fetch(`${API_BASE_URL}/senhas`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senha: senhaGerada,
+            cpf: cpfCadastro,
+            status: "cadastro",
+            soc_status: "nao_encontrado"
+          })
+        });
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.message || "Falha ao registrar senha");
+        }
       }
 
       senha = senhaGerada;
@@ -246,27 +259,39 @@ async function confirmarAtendimento() {
 
   try {
     // Para totem, gravamos somente como "cadastro" (atendente valida/triagem e libera).
-    // Sempre usar o backend como proxy (evita problemas de RLS/CORS)
     const cpfLimpo = String(paciente.CPFFUNCIONARIO || '').replace(/\D/g, '');
-    const res = await fetch(`${API_BASE_URL}/senhas`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        senha: String(senha),
-        cpf: cpfLimpo || undefined,
-        // IMPORTANTE: não gravar nome aqui para não “furar” o fluxo de triagem
-        // e para compatibilidade com policy de insert anônimo no Supabase.
-        status: "cadastro",
-        soc_status: "encontrado"
-      })
-    });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.message || "Falha ao registrar senha");
+    // Preferir Supabase direto (RLS permite INSERT anon em cadastro).
+    if (window.safeSupabase) {
+      const { error } = await window.safeSupabase.from('senhas').insert([
+        {
+          senha: String(senha),
+          cpf: cpfLimpo || undefined,
+          status: 'cadastro',
+          soc_status: 'encontrado'
+        }
+      ]);
+      if (error) throw error;
+    } else {
+      // Fallback: backend como proxy
+      const res = await fetch(`${API_BASE_URL}/senhas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senha: String(senha),
+          cpf: cpfLimpo || undefined,
+          // IMPORTANTE: não gravar nome aqui para não “furar” o fluxo de triagem
+          status: "cadastro",
+          soc_status: "encontrado"
+        })
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Falha ao registrar senha");
+      }
     }
     // erro silencioso
   } catch (e) {
-    // erro silencioso
+    console.warn('Falha ao registrar senha no Supabase:', e);
   }
   cpfNaoEncontradoNoSOC = false; // CPF foi encontrado no SOC, então reset da flag
   step = 3;
