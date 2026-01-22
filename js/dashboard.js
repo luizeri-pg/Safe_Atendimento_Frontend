@@ -1952,6 +1952,13 @@ function getSOCUrl(data) {
                 window.location.href = 'login.html';
                 return;
             }
+
+            // Enfermagem não usa o dashboard: vai direto para o painel de atendimento.
+            const role = String(user?.role || '').trim().toLowerCase();
+            if (role === 'enfermagem') {
+                window.location.href = 'medico.html';
+                return;
+            }
             hideAuthBanner();
             applyRoleUI(user);
 
