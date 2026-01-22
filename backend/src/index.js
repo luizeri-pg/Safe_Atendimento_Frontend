@@ -67,9 +67,19 @@ if (STATIC_ROOT) {
       );
   });
 
+  // Evita cache agressivo do Safari/HTTP intermediários (senão o browser fica com JS antigo).
+  // Em produção, preferimos sempre revalidar o HTML/JS.
+  const noStore = (_res, filePath) => {
+    // Só aplica em HTML/JS (assets de imagem podem permanecer cacheáveis se quiser no futuro).
+    const p = String(filePath || "");
+    if (p.endsWith(".js") || p.endsWith(".html")) {
+      _res.setHeader("Cache-Control", "no-store, max-age=0");
+    }
+  };
+
   app.use("/assets", express.static(path.join(STATIC_ROOT, "assets")));
-  app.use("/js", express.static(path.join(STATIC_ROOT, "js")));
-  app.use("/pages", express.static(path.join(STATIC_ROOT, "pages")));
+  app.use("/js", express.static(path.join(STATIC_ROOT, "js"), { setHeaders: noStore, maxAge: 0 }));
+  app.use("/pages", express.static(path.join(STATIC_ROOT, "pages"), { setHeaders: noStore, maxAge: 0 }));
   app.get("/", (_req, res) => res.redirect("/pages/index.html"));
 } else {
   // Se cair aqui, o serviço foi deployado sem os arquivos do frontend no container.
