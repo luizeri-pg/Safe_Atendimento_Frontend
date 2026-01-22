@@ -22,14 +22,21 @@ async function ensureLoggedUser() {
         const { data: sessionData, error: sessionErr } = await supa.auth.getSession();
         if (sessionErr) throw sessionErr;
         const userId = sessionData?.session?.user?.id;
+        const accessToken = sessionData?.session?.access_token || null;
         if (!userId) return null;
+        if (!accessToken) return null;
 
-        const { data: profile, error: profileErr } = await supa
-            .from('profiles')
-            .select('id, username, nome, role')
-            .eq('id', userId)
-            .single();
-        if (profileErr || !profile?.role) return null;
+        const apiBase = window.API_CONFIG?.BASE_URL || null;
+        if (!apiBase) return null;
+
+        const profRes = await fetch(
+            `${apiBase}/supa/profiles?select=id,username,nome,role&id=eq.${encodeURIComponent(userId)}`,
+            { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } }
+        );
+        if (!profRes.ok) return null;
+        const profArr = await profRes.json().catch(() => []);
+        const profile = Array.isArray(profArr) ? profArr[0] : profArr;
+        if (!profile?.role) return null;
 
         const normalized = {
             id: profile.id,

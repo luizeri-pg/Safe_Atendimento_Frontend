@@ -35,18 +35,18 @@
       async function carregarSenhas() {
         try {
           let senhas = [];
-          if (window.safeSupabase) {
-            const { data, error } = await window.safeSupabase
-              .from('senhas')
-              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
-              .in('status', ['cadastro', 'pendente'])
-              .is('medico_atendendo_id', null)
-              .order('updated_at', { ascending: false })
-              .limit(200);
-            if (error) {
-              console.error('Erro ao buscar senhas do Supabase:', error);
-              throw error;
-            }
+          // Sempre usar o backend como proxy em produção (evita CORS do Safari com supabase.co).
+          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+            const { data: sessionData } = await window.safeSupabase.auth.getSession();
+            const token = sessionData?.session?.access_token || null;
+            if (!token) throw new Error('Sem sessão do Supabase');
+
+            const res = await fetch(
+              `${window.API_CONFIG.BASE_URL}/supa/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&status=in.(cadastro,pendente)&medico_atendendo_id=is.null&order=updated_at.desc&limit=200`,
+              { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+            );
+            if (!res.ok) throw new Error(`Falha ao buscar senhas via proxy (${res.status})`);
+            const data = await res.json().catch(() => []);
             senhas = (Array.isArray(data) ? data : []).map((s) => ({
               senha: s.senha,
               nome: s.nome,
@@ -236,14 +236,26 @@
         const nome = document.getElementById("inputNome").value.trim();
         const cpf = document.getElementById("inputCpf").value.trim();
         if (!nome || !cpf) return;
-        if (window.safeSupabase) {
-          const { error } = await window.safeSupabase.rpc('triar_senha', {
-            p_senha: senhaParaCadastro,
-            p_nome: nome,
-            p_cpf: cpf,
-            p_soc_status: 'nao_verificado'
+        if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+          const { data: sessionData } = await window.safeSupabase.auth.getSession();
+          const token = sessionData?.session?.access_token || null;
+          if (!token) throw new Error('Sem sessão do Supabase');
+
+          const res = await fetch(`${window.API_CONFIG.BASE_URL}/supa/rpc/triar_senha`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json'
+            },
+            body: JSON.stringify({
+              p_senha: senhaParaCadastro,
+              p_nome: nome,
+              p_cpf: cpf,
+              p_soc_status: 'nao_verificado'
+            })
           });
-          if (error) throw error;
+          if (!res.ok) throw new Error(`Falha ao triar via proxy (${res.status})`);
         } else {
           // Atualiza senha no backend (PATCH para adicionar nome/cpf e mudar status para pendente)
           await fetch(
@@ -266,22 +278,35 @@
         e.preventDefault();
         const nome = document.getElementById("inputNomeEditar").value.trim();
         if (!nome) return;
-        if (window.safeSupabase) {
-          // Reaproveita a RPC de triagem para atualizar nome mantendo CPF atual
-          const { data: row, error: rowErr } = await window.safeSupabase
-            .from('senhas')
-            .select('cpf,soc_status')
-            .eq('senha', senhaParaEditar)
-            .single();
-          if (rowErr) throw rowErr;
+        if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+          const { data: sessionData } = await window.safeSupabase.auth.getSession();
+          const token = sessionData?.session?.access_token || null;
+          if (!token) throw new Error('Sem sessão do Supabase');
 
-          const { error } = await window.safeSupabase.rpc('triar_senha', {
-            p_senha: senhaParaEditar,
-            p_nome: nome,
-            p_cpf: row?.cpf || '',
-            p_soc_status: row?.soc_status || 'nao_verificado'
+          // Buscar cpf/soc_status via proxy
+          const getRes = await fetch(
+            `${window.API_CONFIG.BASE_URL}/supa/senhas?select=cpf,soc_status&senha=eq.${encodeURIComponent(senhaParaEditar)}&limit=1`,
+            { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+          );
+          if (!getRes.ok) throw new Error('Falha ao buscar dados da senha via proxy');
+          const arr = await getRes.json().catch(() => []);
+          const row = Array.isArray(arr) ? arr[0] : arr;
+
+          const res = await fetch(`${window.API_CONFIG.BASE_URL}/supa/rpc/triar_senha`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json'
+            },
+            body: JSON.stringify({
+              p_senha: senhaParaEditar,
+              p_nome: nome,
+              p_cpf: row?.cpf || '',
+              p_soc_status: row?.soc_status || 'nao_verificado'
+            })
           });
-          if (error) throw error;
+          if (!res.ok) throw new Error(`Falha ao atualizar via proxy (${res.status})`);
         } else {
           // Atualiza apenas o nome no backend
           await fetch(

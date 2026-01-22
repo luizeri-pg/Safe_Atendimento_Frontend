@@ -44,17 +44,20 @@
           let senhasChamadas = []; // Senhas que foram chamadas pelos médicos
           let encaminhadosExame = []; // Encaminhados para sala de exame (não é consultório)
           
-          if (window.safeSupabase) {
-            // Buscar senhas pendentes (fila)
-            const { data: pendentes, error: errorPendentes } = await window.safeSupabase
-              .from('senhas')
-              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
-              .eq('status', 'pendente')
-              .is('medico_atendendo_id', null)
-              .order('updated_at', { ascending: false })
-              .limit(50);
-            if (errorPendentes) throw errorPendentes;
-            
+          // Em produção, o Safari pode bloquear chamadas cross-site ao supabase.co.
+          // O painel (TV) usa endpoints server-side no backend para evitar CORS.
+          if (window.API_CONFIG?.BASE_URL) {
+            const base = window.API_CONFIG.BASE_URL;
+            const [pendRes, atendRes] = await Promise.all([
+              fetch(`${base}/painel/pendentes`, { headers: { Accept: 'application/json' } }),
+              fetch(`${base}/painel/em_atendimento`, { headers: { Accept: 'application/json' } })
+            ]);
+            if (!pendRes.ok) throw new Error(`Falha painel/pendentes (${pendRes.status})`);
+            if (!atendRes.ok) throw new Error(`Falha painel/em_atendimento (${atendRes.status})`);
+
+            const pendentes = await pendRes.json().catch(() => []);
+            const emAtendimento = await atendRes.json().catch(() => []);
+
             senhas = (Array.isArray(pendentes) ? pendentes : []).map((s) => ({
               senha: s.senha,
               nome: s.nome,
@@ -66,17 +69,7 @@
               medicoAtendendoEmail: null,
               medicoAtendendoId: null
             }));
-            
-            // Buscar senhas em atendimento (chamadas)
-            const { data: emAtendimento, error: errorAtendimento } = await window.safeSupabase
-              .from('senhas')
-              .select('senha,nome,cpf,status,created_at,updated_at,called_at,medico_atendendo_id,profiles!medico_atendendo_id(nome,specialty)')
-              .eq('status', 'em_atendimento')
-              .not('medico_atendendo_id', 'is', null)
-              .order('called_at', { ascending: false })
-              .limit(10);
-            if (errorAtendimento) throw errorAtendimento;
-            
+
             senhasChamadas = (Array.isArray(emAtendimento) ? emAtendimento : []).map((s) => ({
               senha: s.senha,
               nome: s.nome ? s.nome.replace(/ \[EM ATENDIMENTO - .+?\]$/, '') : 'Sem nome',

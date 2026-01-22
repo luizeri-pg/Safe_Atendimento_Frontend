@@ -206,33 +206,20 @@ async function buscarPorCPF() {
     const cpfCadastro = cpfLimpo || cpf;
     const senhaGerada = gerarSenhaSemAgendamento();
     try {
-      // Preferir Supabase direto (RLS permite INSERT anon em cadastro).
-      if (window.safeSupabase) {
-        const { error } = await window.safeSupabase.from('senhas').insert([
-          {
-            senha: senhaGerada,
-            cpf: cpfCadastro,
-            status: 'cadastro',
-            soc_status: 'nao_encontrado'
-          }
-        ]);
-        if (error) throw error;
-      } else {
-        // Fallback: backend como proxy
-        const res = await fetch(`${API_BASE_URL}/senhas`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            senha: senhaGerada,
-            cpf: cpfCadastro,
-            status: "cadastro",
-            soc_status: "nao_encontrado"
-          })
-        });
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData.message || "Falha ao registrar senha");
-        }
+      // Sempre usar o backend como proxy (evita CORS e mantém consistência).
+      const res = await fetch(`${API_BASE_URL}/senhas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senha: senhaGerada,
+          cpf: cpfCadastro,
+          status: "cadastro",
+          soc_status: "nao_encontrado"
+        })
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Falha ao registrar senha");
       }
 
       senha = senhaGerada;
@@ -264,7 +251,7 @@ async function confirmarAtendimento() {
     const cpfLimpo = String(paciente.CPFFUNCIONARIO || '').replace(/\D/g, '');
     const nomeSOC = paciente.NOMEFUNCIONARIO != null ? String(paciente.NOMEFUNCIONARIO).trim() : "";
 
-    // O backend usa service role no Supabase, então consegue gravar como "pendente".
+    // O backend usa service role no Supabase, então evita CORS no browser.
     const res = await fetch(`${API_BASE_URL}/senhas`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

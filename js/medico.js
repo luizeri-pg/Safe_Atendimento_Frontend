@@ -28,6 +28,28 @@
 
       const SAFE_ALLOWED_ATENDIMENTO_ROLES = new Set(['medico', 'enfermagem', 'fono']);
 
+      async function getAccessToken() {
+        try {
+          const supa = window.safeSupabase;
+          if (!supa) return null;
+          const { data } = await supa.auth.getSession();
+          return data?.session?.access_token || null;
+        } catch {
+          return null;
+        }
+      }
+
+      async function supaProxyFetch(pathWithQuery, init = {}) {
+        const apiBase = window.API_CONFIG?.BASE_URL || null; // inclui /api
+        if (!apiBase) throw new Error('API_BASE_URL_not_configured');
+        const token = await getAccessToken();
+        if (!token) throw new Error('no_access_token');
+        const headers = new Headers(init.headers || {});
+        if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+        if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+        return fetch(`${apiBase}/supa${pathWithQuery}`, { ...init, headers });
+      }
+
       async function resolveLoggedUser() {
         // 1) Preferência: dados persistidos no localStorage
         try {
@@ -151,40 +173,27 @@
 
           // Fonte de dados: Supabase (preferencial) ou backend antigo (fallback)
           let senhas = [];
-          if (window.safeSupabase) {
-            // Cache simples de profiles (para resolver ids → nomes sem fazer N queries)
-            if (!window.__SAFE_PROFILES_CACHE) {
-              window.__SAFE_PROFILES_CACHE = { fetchedAt: 0, byId: {} };
-            }
-            async function getProfilesById() {
-              const cache = window.__SAFE_PROFILES_CACHE;
-              const now = Date.now();
-              if (cache.fetchedAt && now - cache.fetchedAt < 60_000 && cache.byId) return cache.byId;
-              const { data: profiles, error: profErr } = await window.safeSupabase
-                .from('profiles')
-                .select('id,nome')
-                .order('nome', { ascending: true });
-              if (profErr) {
-                // Se falhar, mantém o cache antigo (se houver) e segue
-                return cache.byId || {};
+          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+            // Buscar profiles via proxy (evita CORS no browser)
+            const profilesById = {};
+            try {
+              const profRes = await supaProxyFetch(`/profiles?select=id,nome`);
+              if (profRes.ok) {
+                const profList = await profRes.json().catch(() => []);
+                (Array.isArray(profList) ? profList : []).forEach((p) => {
+                  if (p?.id) profilesById[String(p.id)] = String(p.nome || '').trim() || String(p.id);
+                });
               }
-              const byId = {};
-              (Array.isArray(profiles) ? profiles : []).forEach((p) => {
-                if (p?.id) byId[String(p.id)] = String(p.nome || '').trim() || String(p.id);
-              });
-              cache.fetchedAt = now;
-              cache.byId = byId;
-              return byId;
-            }
+            } catch {}
 
-            const profilesById = await getProfilesById();
-            const { data, error } = await window.safeSupabase
-              .from('senhas')
-              .select('senha,nome,cpf,status,created_at,updated_at,called_at,encaminhamento,medico_atendendo_id')
-              .in('status', ['pendente', 'em_atendimento', 'atendida'])
-              .order('updated_at', { ascending: false })
-              .limit(200);
-            if (error) throw error;
+            const resSenhas = await supaProxyFetch(
+              `/senhas?select=senha,nome,cpf,status,created_at,updated_at,called_at,encaminhamento,medico_atendendo_id&status=in.(pendente,em_atendimento,atendida)&order=updated_at.desc&limit=200`
+            );
+            if (!resSenhas.ok) {
+              const txt = await resSenhas.text().catch(() => '');
+              throw new Error(`proxy_senhas_failed_${resSenhas.status}: ${txt.slice(0, 200)}`);
+            }
+            const data = await resSenhas.json().catch(() => []);
 
             senhas = (Array.isArray(data) ? data : []).map((s) => {
               const rawEnc = s.encaminhamento || null;
@@ -193,13 +202,11 @@
               const enc = rawEnc
                 ? {
                     tipo: rawEnc.tipo || null,
-                    // compat com código legado (que espera strings)
                     medicoOrigem: rawEnc.medicoOrigem || (origemId ? (profilesById[String(origemId)] || origemId) : null),
                     medicoDestino: rawEnc.medicoDestino || (destinoId ? (profilesById[String(destinoId)] || destinoId) : null),
                     salaDestino: rawEnc.salaDestino || null,
                     motivo: rawEnc.motivo || null,
                     aceito: rawEnc.aceito === true,
-                    // ids explícitos (para comparações)
                     medicoOrigemId: origemId,
                     medicoDestinoId: destinoId,
                     createdAt: rawEnc.createdAt || null,
@@ -626,13 +633,15 @@
         try {
           // Busca dados do paciente
           let paciente = null;
-          if (window.safeSupabase) {
-            const { data, error } = await window.safeSupabase
-              .from('senhas')
-              .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
-              .eq('senha', senha)
-              .single();
-            if (error) throw error;
+          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+            const resOne = await supaProxyFetch(
+              `/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&senha=eq.${encodeURIComponent(
+                senha
+              )}&limit=1`
+            );
+            if (!resOne.ok) throw new Error('Falha ao buscar paciente via proxy');
+            const arr = await resOne.json().catch(() => []);
+            const data = Array.isArray(arr) ? arr[0] : arr;
             paciente = data
               ? {
                   senha: data.senha,
@@ -656,19 +665,21 @@
             const medicoAtualNome = document.getElementById('medicoNome').textContent;
             const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
             
-            if (window.safeSupabase) {
-              // Chamada ATÔMICA via RPC (impede dois médicos chamarem a mesma senha)
-              const { data: called, error: callErr } = await window.safeSupabase.rpc('chamar_senha', {
-                p_senha: senha
+            if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+              // Chamada ATÔMICA via RPC (via proxy no backend, evita CORS no Safari)
+              const callRes = await supaProxyFetch(`/rpc/chamar_senha`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ p_senha: senha })
               });
-              if (callErr) {
+              if (!callRes.ok) {
                 alert('Esta senha não está mais disponível (já foi chamada ou não pode ser chamada).');
                 carregarFila();
                 return;
               }
-              // Atualiza dados do paciente com retorno da RPC
-              paciente.status = called.status;
-              paciente.medico_atendendo_id = called.medico_atendendo_id;
+              const called = await callRes.json().catch(() => null);
+              paciente.status = called?.status || 'em_atendimento';
+              paciente.medico_atendendo_id = called?.medico_atendendo_id || null;
             } else {
               // Fluxo legacy permanece (backend antigo)
               // (mantido sem mudanças)
@@ -757,9 +768,13 @@
         if (!confirmacao) return;
         
         try {
-          if (window.safeSupabase) {
-            const { error } = await window.safeSupabase.rpc('finalizar_senha', { p_senha: pacienteAtual.senha });
-            if (error) throw error;
+          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+            const resFinal = await supaProxyFetch(`/rpc/finalizar_senha`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ p_senha: pacienteAtual.senha })
+            });
+            if (!resFinal.ok) throw new Error('Falha ao finalizar via proxy');
           } else {
             const url = getAPIUrl();
             await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
@@ -1246,21 +1261,29 @@
           
           if (window.safeSupabase) {
             if (tipo !== 'medico') {
-              const { error } = await window.safeSupabase.rpc('encaminhar_para_exame', {
-                p_senha: pacienteAtual.senha,
-                p_sala_destino: salaDestino,
-                p_motivo: motivo
+              const resEncEx = await supaProxyFetch(`/rpc/encaminhar_para_exame`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  p_senha: pacienteAtual.senha,
+                  p_sala_destino: salaDestino,
+                  p_motivo: motivo
+                })
               });
-              if (error) throw error;
+              if (!resEncEx.ok) throw new Error('Falha ao encaminhar para exame via proxy');
             } else {
               const medicoDestinoId = medicoDestino; // no modo Supabase, value deve ser uuid
-              const { error } = await window.safeSupabase.rpc('encaminhar_senha', {
-                p_senha: pacienteAtual.senha,
-                p_medico_destino_id: medicoDestinoId,
-                p_motivo: motivo,
-                p_sala_destino: salaDestino
+              const resEncMed = await supaProxyFetch(`/rpc/encaminhar_senha`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  p_senha: pacienteAtual.senha,
+                  p_medico_destino_id: medicoDestinoId,
+                  p_motivo: motivo,
+                  p_sala_destino: salaDestino
+                })
               });
-              if (error) throw error;
+              if (!resEncMed.ok) throw new Error('Falha ao encaminhar para médico via proxy');
             }
           } else {
             // Legacy: mantém comportamento existente (PATCH no backend)
@@ -1352,14 +1375,13 @@
       async function aceitarEncaminhamento(senha) {
         try {
           let paciente = null;
-          if (window.safeSupabase) {
-            const { data, error } = await window.safeSupabase
-              .from('senhas')
-              .select('senha,nome,cpf,status,encaminhamento')
-              .eq('senha', senha)
-              .single();
-            if (error) throw error;
-            paciente = data;
+          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+            const resOne = await supaProxyFetch(
+              `/senhas?select=senha,nome,cpf,status,encaminhamento&senha=eq.${encodeURIComponent(senha)}&limit=1`
+            );
+            if (!resOne.ok) throw new Error('Falha ao buscar paciente via proxy');
+            const arr = await resOne.json().catch(() => []);
+            paciente = Array.isArray(arr) ? arr[0] : arr;
           } else {
             const url = getAPIUrl();
             const res = await fetch(url);
@@ -1399,9 +1421,13 @@
           
           if (!confirmacao) return;
           
-          if (window.safeSupabase) {
-            const { error } = await window.safeSupabase.rpc('aceitar_encaminhamento', { p_senha: senha });
-            if (error) throw error;
+          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+            const resAcc = await supaProxyFetch(`/rpc/aceitar_encaminhamento`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ p_senha: senha })
+            });
+            if (!resAcc.ok) throw new Error('Falha ao aceitar encaminhamento via proxy');
           } else {
             const url = getAPIUrl();
             const encaminhamentoAtualizado = {

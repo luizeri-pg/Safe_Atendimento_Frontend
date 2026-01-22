@@ -104,6 +104,78 @@ app.use(
   })
 );
 
+// Proxy Supabase Data API (PostgREST/RPC) para evitar CORS no browser.
+// - O browser chama o backend (mesma origem no Railway)
+// - O backend chama o Supabase (server-side) e repassa a resposta
+// - Requer Authorization: Bearer <access_token> do Supabase (role authenticated)
+function getSupabasePublicEnv() {
+  const supabaseUrl = String(process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
+  // Para proxy autenticado, a ANON key é suficiente (o token do usuário decide permissões via RLS).
+  // Em caso de falta, tentamos service role (último recurso).
+  const supabaseAnonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+  const supabaseServiceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  return {
+    url: supabaseUrl,
+    apikey: supabaseAnonKey || supabaseServiceKey || ""
+  };
+}
+
+app.all("/api/supa/*", async (req, res) => {
+  try {
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    // Whitelist de recursos expostos
+    const incoming = String(req.originalUrl || req.url || "");
+    const restPath = incoming.replace(/^\/api\/supa/, ""); // ex.: /senhas?select=...
+    const allowed =
+      restPath.startsWith("/senhas") ||
+      restPath.startsWith("/profiles") ||
+      restPath.startsWith("/rpc/");
+    if (!allowed) {
+      return sendError(res, 404, "Rota não encontrada");
+    }
+
+    const targetUrl = `${supabaseUrl}/rest/v1${restPath}`;
+
+    const headers = {
+      apikey,
+      // Importante: repassar o token do usuário para manter auth.uid() e RLS.
+      Authorization: String(req.headers.authorization || ""),
+      Accept: String(req.headers.accept || "application/json")
+    };
+
+    // Preservar Prefer (return=representation), se o frontend mandar.
+    if (req.headers.prefer) headers.Prefer = String(req.headers.prefer);
+    // Preservar accept-profile/content-profile caso existam (multi-schema).
+    if (req.headers["accept-profile"]) headers["accept-profile"] = String(req.headers["accept-profile"]);
+    if (req.headers["content-profile"]) headers["content-profile"] = String(req.headers["content-profile"]);
+
+    const method = String(req.method || "GET").toUpperCase();
+    const hasBody = method !== "GET" && method !== "HEAD";
+
+    const upstream = await fetch(targetUrl, {
+      method,
+      headers: {
+        ...headers,
+        ...(hasBody ? { "Content-Type": "application/json" } : {})
+      },
+      body: hasBody ? JSON.stringify(req.body ?? {}) : undefined
+    });
+
+    const contentType = upstream.headers.get("content-type") || "application/json";
+    const text = await upstream.text();
+    res.status(upstream.status);
+    res.setHeader("content-type", contentType);
+    return res.send(text);
+  } catch (e) {
+    console.error("Erro no proxy Supabase (/api/supa/*):", e);
+    return sendError(res, 500, "Erro ao chamar Supabase via proxy", { detail: String(e?.message || e) });
+  }
+});
+
 const db = openDb(DB_PATH);
 initDb(db);
 
@@ -535,6 +607,65 @@ app.get("/api/soc", async (req, res) => {
     const msg = e?.name === "AbortError" ? "Timeout ao consultar SOC" : "Falha ao consultar SOC";
     console.warn(`[SOC] ${msg}:`, String(e?.message || e));
     return res.json([]);
+  }
+});
+
+// Painel (TV): endpoints server-side para evitar CORS no browser.
+// Não requer login: o backend usa service role para montar o feed.
+function getSupabaseServiceEnv() {
+  const supabaseUrl = String(process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
+  const serviceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  return { url: supabaseUrl, serviceKey };
+}
+
+async function supabaseServiceFetch(pathAndQuery) {
+  const { url, serviceKey } = getSupabaseServiceEnv();
+  if (!url || !serviceKey) {
+    throw new Error("Supabase não configurado (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)");
+  }
+  const resp = await fetch(`${url}${pathAndQuery}`, {
+    method: "GET",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      Accept: "application/json",
+    },
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    const err = new Error(`Supabase error ${resp.status}`);
+    err.status = resp.status;
+    err.body = text;
+    throw err;
+  }
+  return JSON.parse(text || "[]");
+}
+
+app.get("/api/painel/pendentes", async (_req, res) => {
+  try {
+    const data = await supabaseServiceFetch(
+      "/rest/v1/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&status=eq.pendente&medico_atendendo_id=is.null&order=updated_at.desc&limit=50"
+    );
+    return res.json(Array.isArray(data) ? data : []);
+  } catch (e) {
+    console.error("Erro /api/painel/pendentes:", e);
+    return sendError(res, 500, "Erro ao carregar painel (pendentes)", {
+      detail: String(e?.message || e),
+    });
+  }
+});
+
+app.get("/api/painel/em_atendimento", async (_req, res) => {
+  try {
+    const data = await supabaseServiceFetch(
+      "/rest/v1/senhas?select=senha,nome,cpf,status,created_at,updated_at,called_at,medico_atendendo_id,profiles!medico_atendendo_id(nome,specialty)&status=eq.em_atendimento&medico_atendendo_id=not.is.null&order=called_at.desc&limit=10"
+    );
+    return res.json(Array.isArray(data) ? data : []);
+  } catch (e) {
+    console.error("Erro /api/painel/em_atendimento:", e);
+    return sendError(res, 500, "Erro ao carregar painel (em atendimento)", {
+      detail: String(e?.message || e),
+    });
   }
 });
 

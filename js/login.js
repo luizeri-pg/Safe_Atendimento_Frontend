@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const supa = window.safeSupabase;
         const authDomain = window.SAFE_SUPABASE_CONFIG?.authDomain || 'safe.local';
+        const apiBase = window.API_CONFIG?.BASE_URL || null;
 
         // A partir de agora NÃO usamos SQLite/back-end para login.
         // Se o Supabase não estiver configurado (anon key ausente), mostramos um erro claro.
@@ -38,11 +39,36 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        const { data: profile, error: profileErr } = await supa
-          .from('profiles')
-          .select('id, username, nome, role')
-          .eq('id', data.user.id)
-          .single();
+        // Em produção (Railway), o Safari pode bloquear chamadas cross-site ao PostgREST.
+        // Então buscamos o profile via backend (/api/supa/*), evitando CORS no browser.
+        const accessToken = data?.session?.access_token || null;
+        if (!apiBase || !accessToken) {
+          await supa.auth.signOut().catch(() => {});
+          showError('Sessão inválida. Recarregue a página e tente novamente.');
+          return;
+        }
+
+        const profRes = await fetch(
+          `${apiBase}/supa/profiles?select=id,username,nome,role&id=eq.${encodeURIComponent(data.user.id)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: 'application/json',
+            },
+          }
+        );
+
+        if (!profRes.ok) {
+          const txt = await profRes.text().catch(() => '');
+          await supa.auth.signOut().catch(() => {});
+          showError('Erro ao carregar perfil. Verifique sua conexão.');
+          console.error('Falha ao buscar profile via backend:', profRes.status, txt.slice(0, 300));
+          return;
+        }
+
+        const profArr = await profRes.json().catch(() => []);
+        const profile = Array.isArray(profArr) ? profArr[0] : profArr;
+        const profileErr = !profile ? new Error('profile_not_found') : null;
 
         if (profileErr || !profile) {
           // Se não houver profile, desloga para evitar sessão "meio configurada"
@@ -86,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function redirectToDashboard(role) {
   // Novo fluxo: sempre cai no Dashboard, que adapta UI por perfil.
   // As páginas específicas continuam protegidas pelos seus próprios guards.
-  if (role === 'atendente' || role === 'medico') {
+  if (role === 'atendente' || role === 'medico' || role === 'enfermagem' || role === 'fono') {
     window.location.href = 'dashboard.html';
     return;
   }
