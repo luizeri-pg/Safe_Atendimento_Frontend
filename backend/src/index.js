@@ -176,6 +176,173 @@ app.all("/api/supa/*", async (req, res) => {
   }
 });
 
+// =========================
+// Auth (Supabase) - backend-first
+// =========================
+// Objetivo: deixar o navegador o mais "burro" possível e reduzir problemas de sessão no Safari.
+// - O front manda username/senha
+// - O backend autentica no Supabase Auth (password grant)
+// - O backend busca o profile no PostgREST
+// - O front passa a guardar apenas access_token + profile no localStorage
+function getAuthDomain() {
+  return String(process.env.SAFE_SUPABASE_AUTH_DOMAIN || "safe.local").trim() || "safe.local";
+}
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const usernameRaw = String(req.body?.username || "").trim();
+    const password = String(req.body?.password || req.body?.senha || "").trim();
+    if (!usernameRaw || !password) {
+      return sendError(res, 400, "Usuário e senha são obrigatórios");
+    }
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    const email = `${usernameRaw.toLowerCase()}@${getAuthDomain()}`;
+
+    // Password grant (server-side) - não expõe a anon key no HTML; usa o backend como mediador.
+    const tokenRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: {
+        apikey,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({ email, password })
+    });
+
+    const tokenText = await tokenRes.text();
+    if (!tokenRes.ok) {
+      // Auth do Supabase costuma retornar 400/401 com json
+      return sendError(res, tokenRes.status, "Credenciais inválidas", {
+        detail: tokenText.slice(0, 300)
+      });
+    }
+
+    const tokenJson = JSON.parse(tokenText || "{}");
+    const accessToken = String(tokenJson?.access_token || "").trim();
+    const userId = String(tokenJson?.user?.id || "").trim();
+    const userEmail = String(tokenJson?.user?.email || email).trim();
+
+    if (!accessToken || !userId) {
+      return sendError(res, 500, "Resposta de login inválida (sem token)");
+    }
+
+    // Busca profile via PostgREST, autenticado como o usuário (mantém RLS).
+    const profRes = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?select=id,username,nome,role&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      {
+        method: "GET",
+        headers: {
+          apikey,
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json"
+        }
+      }
+    );
+
+    if (!profRes.ok) {
+      const txt = await profRes.text().catch(() => "");
+      return sendError(res, profRes.status, "Erro ao carregar perfil", { detail: txt.slice(0, 300) });
+    }
+
+    const arr = await profRes.json().catch(() => []);
+    const profile = Array.isArray(arr) ? arr[0] : arr;
+    if (!profile?.role) {
+      return sendError(res, 404, "Perfil não encontrado (tabela profiles)");
+    }
+
+    return res.json({
+      access_token: accessToken,
+      user: { id: userId, email: userEmail },
+      profile
+    });
+  } catch (e) {
+    console.error("Erro em /api/auth/login:", e);
+    return sendError(res, 500, "Erro ao fazer login", { detail: String(e?.message || e) });
+  }
+});
+
+app.post("/api/auth/logout", async (_req, res) => {
+  // Stateless: o front é quem limpa token/localStorage.
+  return res.json({ ok: true });
+});
+
+// =========================
+// Atendimento (Supabase) - endpoints dedicados (sem service role)
+// =========================
+function getBearerAuth(req) {
+  const raw = String(req.headers.authorization || "").trim();
+  return raw.toLowerCase().startsWith("bearer ") ? raw : null;
+}
+
+app.post("/api/atendimento/encaminhar", async (req, res) => {
+  try {
+    const authHeader = getBearerAuth(req);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+
+    const senha = normalizeSenha(req.body?.senha);
+    const tipo = String(req.body?.tipo || "medico").trim(); // "medico" | "exame"
+    const motivo = req.body?.motivo != null ? String(req.body.motivo).trim() : null;
+    const salaDestino = req.body?.salaDestino != null ? String(req.body.salaDestino).trim() : null;
+    const medicoDestinoId = req.body?.medicoDestinoId != null ? String(req.body.medicoDestinoId).trim() : null;
+
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    let rpcName = "encaminhar_senha";
+    let rpcBody = null;
+
+    if (tipo !== "medico") {
+      rpcName = "encaminhar_para_exame";
+      if (!salaDestino) return sendError(res, 400, "Campo 'salaDestino' é obrigatório para exames");
+      rpcBody = {
+        p_senha: senha,
+        p_sala_destino: salaDestino,
+        p_motivo: motivo
+      };
+    } else {
+      if (!medicoDestinoId) return sendError(res, 400, "Campo 'medicoDestinoId' é obrigatório");
+      rpcBody = {
+        p_senha: senha,
+        p_medico_destino_id: medicoDestinoId,
+        p_motivo: motivo,
+        p_sala_destino: salaDestino
+      };
+    }
+
+    const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/${rpcName}`, {
+      method: "POST",
+      headers: {
+        apikey,
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify(rpcBody)
+    });
+
+    const txt = await rpcRes.text();
+    if (!rpcRes.ok) {
+      return sendError(res, rpcRes.status, "Falha ao encaminhar", { detail: txt.slice(0, 500) });
+    }
+
+    // RPC retorna um objeto (row) em JSON
+    const data = txt ? JSON.parse(txt) : null;
+    return res.json(data);
+  } catch (e) {
+    console.error("Erro em /api/atendimento/encaminhar:", e);
+    return sendError(res, 500, "Erro ao encaminhar", { detail: String(e?.message || e) });
+  }
+});
+
 const db = openDb(DB_PATH);
 initDb(db);
 

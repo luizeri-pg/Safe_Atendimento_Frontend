@@ -237,8 +237,16 @@
         const cpf = document.getElementById("inputCpf").value.trim();
         if (!nome || !cpf) return;
         if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-          const { data: sessionData } = await window.safeSupabase.auth.getSession();
-          const token = sessionData?.session?.access_token || null;
+          const { data: sessionData } = await window.safeSupabase.auth.getSession().catch(() => ({ data: null }));
+          const token =
+            sessionData?.session?.access_token ||
+            (function () {
+              try {
+                return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
+              } catch {
+                return null;
+              }
+            })();
           if (!token) throw new Error('Sem sessão do Supabase');
 
           const res = await fetch(`${window.API_CONFIG.BASE_URL}/supa/rpc/triar_senha`, {
@@ -279,8 +287,16 @@
         const nome = document.getElementById("inputNomeEditar").value.trim();
         if (!nome) return;
         if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-          const { data: sessionData } = await window.safeSupabase.auth.getSession();
-          const token = sessionData?.session?.access_token || null;
+          const { data: sessionData } = await window.safeSupabase.auth.getSession().catch(() => ({ data: null }));
+          const token =
+            sessionData?.session?.access_token ||
+            (function () {
+              try {
+                return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
+              } catch {
+                return null;
+              }
+            })();
           if (!token) throw new Error('Sem sessão do Supabase');
 
           // Buscar cpf/soc_status via proxy

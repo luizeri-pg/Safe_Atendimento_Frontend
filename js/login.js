@@ -17,73 +17,41 @@ document.addEventListener('DOMContentLoaded', () => {
       showLoading(true);
       hideMessages();
 
-      // Autenticação: Supabase (preferencial) ou backend antigo (fallback).
+      // Autenticação (backend-first):
+      // - o backend valida no Supabase Auth e retorna access_token + profile
+      // - o navegador guarda apenas o token e o profile (para guards/UI)
       try {
-        const supa = window.safeSupabase;
-        const authDomain = window.SAFE_SUPABASE_CONFIG?.authDomain || 'safe.local';
         const apiBase = window.API_CONFIG?.BASE_URL || null;
-
-        // A partir de agora NÃO usamos SQLite/back-end para login.
-        // Se o Supabase não estiver configurado (anon key ausente), mostramos um erro claro.
-        if (!supa) {
-          showError(
-            'Supabase não configurado no frontend. Defina SUPABASE_URL e SUPABASE_ANON_KEY (ou use querystring/localStorage) e recarregue a página.'
-          );
+        if (!apiBase) {
+          showError('API não configurada. Recarregue a página e tente novamente.');
           return;
         }
 
-        const email = `${String(username).trim().toLowerCase()}@${authDomain}`;
-        const { data, error } = await supa.auth.signInWithPassword({ email, password });
-        if (error || !data?.user) {
-          showError(error?.message || 'Credenciais inválidas');
+        const resp = await fetch(`${apiBase}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        if (!resp.ok) {
+          const txt = await resp.text().catch(() => '');
+          showError('Credenciais inválidas');
+          console.error('Falha no login via backend:', resp.status, txt.slice(0, 300));
           return;
         }
 
-        // Em produção (Railway), o Safari pode bloquear chamadas cross-site ao PostgREST.
-        // Então buscamos o profile via backend (/api/supa/*), evitando CORS no browser.
-        const accessToken = data?.session?.access_token || null;
-        if (!apiBase || !accessToken) {
-          await supa.auth.signOut().catch(() => {});
-          showError('Sessão inválida. Recarregue a página e tente novamente.');
+        const data = await resp.json().catch(() => null);
+        const accessToken = String(data?.access_token || '').trim();
+        const profile = data?.profile || null;
+        const role = String(profile?.role || '').trim();
+
+        if (!accessToken || !profile || !role) {
+          showError('Resposta de login inválida. Tente novamente.');
           return;
         }
 
-        const profRes = await fetch(
-          `${apiBase}/supa/profiles?select=id,username,nome,role&id=eq.${encodeURIComponent(data.user.id)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              Accept: 'application/json',
-            },
-          }
-        );
-
-        if (!profRes.ok) {
-          const txt = await profRes.text().catch(() => '');
-          await supa.auth.signOut().catch(() => {});
-          showError('Erro ao carregar perfil. Verifique sua conexão.');
-          console.error('Falha ao buscar profile via backend:', profRes.status, txt.slice(0, 300));
-          return;
-        }
-
-        const profArr = await profRes.json().catch(() => []);
-        const profile = Array.isArray(profArr) ? profArr[0] : profArr;
-        const profileErr = !profile ? new Error('profile_not_found') : null;
-
-        if (profileErr || !profile) {
-          // Se não houver profile, desloga para evitar sessão "meio configurada"
-          await supa.auth.signOut().catch(() => {});
-          showError('Perfil não encontrado no Supabase (tabela profiles).');
-          return;
-        }
-
-        const role = String(profile.role || '').trim();
-        if (!role) {
-          await supa.auth.signOut().catch(() => {});
-          showError('Perfil sem role definido (tabela profiles).');
-          return;
-        }
-
+        // Token para chamadas ao backend-proxy (evita depender da sessão do Safari no supabase-js)
+        localStorage.setItem('SAFE_ACCESS_TOKEN', accessToken);
         localStorage.setItem(
           'loggedUser',
           JSON.stringify({

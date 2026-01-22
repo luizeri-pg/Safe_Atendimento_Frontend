@@ -35,6 +35,13 @@
       async function getAccessToken() {
         try {
           const supa = window.safeSupabase;
+          // 1) Preferir token salvo no localStorage (login via backend)
+          try {
+            const stored = String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim();
+            if (stored) return stored;
+          } catch {}
+
+          // 2) Fallback: sessão do supabase-js (quando disponível)
           if (!supa) return null;
           const { data } = await supa.auth.getSession();
           const token = data?.session?.access_token || null;
@@ -1346,31 +1353,30 @@
             aceito: tipo === 'medico' ? false : true // Exames não precisam de aceite
           };
           
-          if (window.safeSupabase) {
-            if (tipo !== 'medico') {
-              const resEncEx = await supaProxyFetch(`/rpc/encaminhar_para_exame`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  p_senha: pacienteAtual.senha,
-                  p_sala_destino: salaDestino,
-                  p_motivo: motivo
-                })
-              });
-              if (!resEncEx.ok) throw new Error('Falha ao encaminhar para exame via proxy');
-            } else {
-              const medicoDestinoId = medicoDestino; // no modo Supabase, value deve ser uuid
-              const resEncMed = await supaProxyFetch(`/rpc/encaminhar_senha`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  p_senha: pacienteAtual.senha,
-                  p_medico_destino_id: medicoDestinoId,
-                  p_motivo: motivo,
-                  p_sala_destino: salaDestino
-                })
-              });
-              if (!resEncMed.ok) throw new Error('Falha ao encaminhar para médico via proxy');
+          if (window.API_CONFIG?.BASE_URL) {
+            // Novo fluxo: backend processa encaminhamento e chama RPC no Supabase.
+            const token = await getAccessToken();
+            if (!token) throw new Error('Sem token de autenticação');
+
+            const resp = await fetch(`${window.API_CONFIG.BASE_URL}/atendimento/encaminhar`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+              },
+              body: JSON.stringify({
+                senha: pacienteAtual.senha,
+                tipo: tipo === 'medico' ? 'medico' : 'exame',
+                medicoDestinoId: tipo === 'medico' ? medicoDestino : null,
+                salaDestino: salaDestino,
+                motivo: motivo
+              })
+            });
+
+            if (!resp.ok) {
+              const txt = await resp.text().catch(() => '');
+              throw new Error(`Falha ao encaminhar via backend (${resp.status}): ${txt.slice(0, 120)}`);
             }
           } else {
             // Legacy: mantém comportamento existente (PATCH no backend)
