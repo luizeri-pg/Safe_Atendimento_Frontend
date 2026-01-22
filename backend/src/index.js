@@ -293,15 +293,24 @@ app.post("/api/usuarios/login", async (req, res) => {
     const senha = String(req.body?.password || req.body?.senha || "").trim();
     const role = String(req.body?.role || "").trim();
 
-    if (!email || !senha || !role) {
-      return res.status(400).json({ message: "Email, senha e role são obrigatórios" });
+    if (!email || !senha) {
+      return res.status(400).json({ message: "Email e senha são obrigatórios" });
     }
 
-    const user = await get(
-      db,
-      `SELECT id, email, role, nome FROM usuarios WHERE email = ? AND senha = ? AND role = ?`,
-      [email, senha, role]
-    );
+    // Compatibilidade:
+    // - Fluxo antigo: front manda role e validamos email+senha+role
+    // - Fluxo novo: front não manda role (login direto) e buscamos por email+senha
+    const user = role
+      ? await get(
+          db,
+          `SELECT id, email, role, nome FROM usuarios WHERE email = ? AND senha = ? AND role = ?`,
+          [email, senha, role]
+        )
+      : await get(
+          db,
+          `SELECT id, email, role, nome FROM usuarios WHERE email = ? AND senha = ?`,
+          [email, senha]
+        );
 
     if (!user) return res.status(401).json({ message: "Credenciais inválidas" });
     return res.json(user);

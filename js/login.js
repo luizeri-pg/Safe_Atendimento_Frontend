@@ -1,44 +1,12 @@
-let selectedRole = null;
-
-// Role selection
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.role-option').forEach(option => {
-    option.addEventListener('click', () => {
-      document.querySelectorAll('.role-option').forEach(opt => opt.classList.remove('selected'));
-      option.classList.add('selected');
-      selectedRole = option.dataset.role;
-    });
-  });
-
-  // Auto-fill demo credentials
-  // NOTA: Estes são apenas valores de exemplo para facilitar desenvolvimento/testes.
-  // A autenticação real é feita via API (ver função de submit do formulário).
-  const usernameInput = document.getElementById('username');
-  if (usernameInput) {
-    usernameInput.addEventListener('focus', () => {
-      if (selectedRole === 'medico') {
-        document.getElementById('username').value = 'medico1';
-        document.getElementById('password').value = 'senha123';
-      } else if (selectedRole === 'atendente') {
-        document.getElementById('username').value = 'atendente1';
-        document.getElementById('password').value = 'senha123';
-      }
-    });
-  }
-
   // Form submission
   const loginForm = document.getElementById('loginForm');
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
-      
-      if (!selectedRole) {
-        showError('Selecione um tipo de usuário');
-        return;
-      }
+      const username = String(document.getElementById('username')?.value || '').trim();
+      const password = String(document.getElementById('password')?.value || '').trim();
 
       if (!username || !password) {
         showError('Preencha todos os campos');
@@ -75,9 +43,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
 
-          if (String(profile.role || '') !== String(selectedRole || '')) {
+          const role = String(profile.role || '').trim();
+          if (!role) {
             await supa.auth.signOut().catch(() => {});
-            showError('Tipo de usuário não confere com o perfil cadastrado.');
+            showError('Perfil sem role definido (tabela profiles).');
             return;
           }
 
@@ -87,12 +56,12 @@ document.addEventListener('DOMContentLoaded', () => {
               id: profile.id,
               username: profile.username,
               nome: profile.nome,
-              role: profile.role,
+              role: role,
             })
           );
 
           showSuccess('Login realizado com sucesso!');
-          setTimeout(() => redirectToDashboard(selectedRole), 500);
+          setTimeout(() => redirectToDashboard(role), 500);
           return;
         }
 
@@ -108,19 +77,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const response = await fetch(loginUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, role: selectedRole })
+          body: JSON.stringify({ email, password })
         });
 
         if (response.ok) {
           const userData = await response.json();
           localStorage.setItem('loggedUser', JSON.stringify({
             email,
-            role: selectedRole,
+            role: userData.role,
             nome: userData.nome || userData.name,
             id: userData.id
           }));
           showSuccess('Login realizado com sucesso!');
-          setTimeout(() => redirectToDashboard(selectedRole), 1000);
+          setTimeout(() => redirectToDashboard(userData.role), 1000);
           return;
         }
 
@@ -134,17 +103,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-
-  // Auto-select role on demo credential click
-  document.querySelectorAll('.demo-credentials p').forEach(p => {
-    p.addEventListener('click', () => {
-      if (p.textContent.includes('Médico')) {
-        document.querySelector('[data-role="medico"]').click();
-      } else if (p.textContent.includes('Atendente')) {
-        document.querySelector('[data-role="atendente"]').click();
-      }
-    });
-  });
 });
 
 // Função removida - agora usa API real
