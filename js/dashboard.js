@@ -199,17 +199,12 @@ function applyRoleUI(user) {
         // ignora
     }
 
-    if (isMedico) {
-        if (linkAtendente) linkAtendente.style.display = 'none';
-        if (quickAtendente) quickAtendente.style.display = 'none';
-        if (linkMedico) linkMedico.style.display = '';
-        if (quickMedico) quickMedico.style.display = '';
-    } else if (isAtendente) {
-        if (linkMedico) linkMedico.style.display = 'none';
-        if (quickMedico) quickMedico.style.display = 'none';
-        if (linkAtendente) linkAtendente.style.display = '';
-        if (quickAtendente) quickAtendente.style.display = '';
-    }
+    // Permitir que todos os perfis operacionais acessem os atalhos.
+    // (As páginas continuam com seus próprios guards quando necessário.)
+    if (linkAtendente) linkAtendente.style.display = '';
+    if (quickAtendente) quickAtendente.style.display = '';
+    if (linkMedico) linkMedico.style.display = '';
+    if (quickMedico) quickMedico.style.display = '';
 }
 
 // Função auxiliar para criar AbortController com timeout (compatível com navegadores antigos)
@@ -1953,12 +1948,6 @@ function getSOCUrl(data) {
                 return;
             }
 
-            // Enfermagem não usa o dashboard: vai direto para o painel de atendimento.
-            const role = String(user?.role || '').trim().toLowerCase();
-            if (role === 'enfermagem') {
-                window.location.href = 'medico.html';
-                return;
-            }
             hideAuthBanner();
             applyRoleUI(user);
 

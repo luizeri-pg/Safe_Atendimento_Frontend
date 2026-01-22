@@ -21,7 +21,7 @@
         try {
           const logged = JSON.parse(localStorage.getItem('loggedUser') || '{}');
           const role = String(logged?.role || '').trim().toLowerCase();
-          const allowed = new Set(['atendente']);
+          const allowed = new Set(['atendente', 'enfermagem', 'medico', 'fono']);
           if (!role || !allowed.has(role)) {
             // Evita acesso cruzado
             window.location.href = 'login.html';

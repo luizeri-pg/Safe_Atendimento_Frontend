@@ -86,11 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function redirectToDashboard(role) {
   // Novo fluxo: sempre cai no Dashboard, que adapta UI por perfil.
   // As páginas específicas continuam protegidas pelos seus próprios guards.
-  if (role === 'enfermagem') {
-    window.location.href = 'medico.html';
-    return;
-  }
-  if (role === 'atendente' || role === 'medico' || role === 'fono') {
+  if (role === 'atendente' || role === 'medico' || role === 'enfermagem' || role === 'fono') {
     window.location.href = 'dashboard.html';
     return;
   }
