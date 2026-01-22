@@ -26,42 +26,82 @@
         inicioConsulta: null
       };
 
-      // Guard de acesso: somente perfis de atendimento (consultório/exames)
-      (function enforceAtendimento() {
-        try {
-          const logged = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-          const role = String(logged?.role || '').trim();
-          const allowed = new Set(['medico', 'enfermagem', 'fono']);
-          if (!role || !allowed.has(role)) {
-            window.location.href = 'login.html';
-          }
-        } catch {
-          window.location.href = 'login.html';
-        }
-      })();
+      const SAFE_ALLOWED_ATENDIMENTO_ROLES = new Set(['medico', 'enfermagem', 'fono']);
 
-      // Identidade do usuário (médico/enfermagem/fono) baseada no login
-      const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
-      const loggedRole = String(loggedUser?.role || '').trim();
-      function displayNomeAtendimento() {
-        const base = String(loggedUser?.nome || loggedUser?.username || '').trim();
-        if (loggedRole === 'medico') {
-          if (!base) return 'Dr. Médico';
-          return /^dr\.?\s/i.test(base) ? base : `Dr. ${base}`;
+      async function resolveLoggedUser() {
+        // 1) Preferência: dados persistidos no localStorage
+        try {
+          const stored = JSON.parse(localStorage.getItem('loggedUser') || 'null');
+          const role = String(stored?.role || '').trim();
+          if (role && SAFE_ALLOWED_ATENDIMENTO_ROLES.has(role)) return stored;
+        } catch {
+          // segue
         }
-        if (base) return base;
-        if (loggedRole === 'enfermagem') return 'Enfermagem';
-        if (loggedRole === 'fono') return 'Fonoaudiologia';
-        return 'Atendimento';
+
+        // 2) Recuperar pelo Supabase (evita "voltar pro login" se o localStorage estiver inconsistente)
+        const supa = window.safeSupabase;
+        if (!supa) return null;
+        try {
+          const { data: sessionData, error: sessionErr } = await supa.auth.getSession();
+          if (sessionErr) throw sessionErr;
+          const userId = sessionData?.session?.user?.id;
+          if (!userId) return null;
+
+          const { data: profile, error: profileErr } = await supa
+            .from('profiles')
+            .select('id, username, nome, role')
+            .eq('id', userId)
+            .single();
+          if (profileErr || !profile?.role) return null;
+
+          const normalized = {
+            id: profile.id,
+            username: profile.username,
+            nome: profile.nome,
+            role: profile.role,
+          };
+          localStorage.setItem('loggedUser', JSON.stringify(normalized));
+          return normalized;
+        } catch (e) {
+          console.warn('[Atendimento] Falha ao restaurar sessão do Supabase:', e);
+          return null;
+        }
       }
-      function displayLocalAtendimento() {
-        if (loggedRole === 'medico') return 'Consultório';
-        if (loggedRole === 'enfermagem') return 'Exames 1 e 2';
-        if (loggedRole === 'fono') return 'Exames 3';
-        return 'Atendimento';
+
+      function applyAtendimentoHeader(user) {
+        const role = String(user?.role || '').trim();
+        const base = String(user?.nome || user?.username || '').trim();
+
+        let displayName = base;
+        if (role === 'medico') {
+          displayName = base ? (/^dr\.?\s/i.test(base) ? base : `Dr. ${base}`) : 'Dr. Médico';
+        } else if (!displayName) {
+          displayName = role === 'enfermagem' ? 'Enfermagem' : role === 'fono' ? 'Fonoaudiologia' : 'Atendimento';
+        }
+
+        const local =
+          role === 'medico'
+            ? 'Consultório'
+            : role === 'enfermagem'
+              ? 'Exames 1 e 2'
+              : role === 'fono'
+                ? 'Exames 3'
+                : 'Atendimento';
+
+        document.getElementById('medicoNome').textContent = displayName;
+        document.getElementById('medicoEspecialidade').textContent = local;
       }
-      document.getElementById('medicoNome').textContent = displayNomeAtendimento();
-      document.getElementById('medicoEspecialidade').textContent = displayLocalAtendimento();
+
+      // Guard de acesso: somente perfis de atendimento (consultório/exames)
+      (async function enforceAtendimento() {
+        const user = await resolveLoggedUser();
+        const role = String(user?.role || '').trim();
+        if (!role || !SAFE_ALLOWED_ATENDIMENTO_ROLES.has(role)) {
+          window.location.href = 'login.html';
+          return;
+        }
+        applyAtendimentoHeader(user);
+      })();
 
       // Verificar se há paciente vindo do atendente e destacar na fila
       function verificarPacienteAtendente() {
