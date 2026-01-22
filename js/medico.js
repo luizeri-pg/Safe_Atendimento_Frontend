@@ -34,10 +34,31 @@
 
       async function getAccessToken() {
         try {
+          function parseJwtExp(token) {
+            try {
+              const parts = String(token || '').split('.');
+              if (parts.length < 2) return null;
+              const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+              const json = JSON.parse(atob(payload));
+              const exp = Number(json?.exp || 0);
+              return exp ? exp * 1000 : null;
+            } catch {
+              return null;
+            }
+          }
+
           // 1) Preferir token salvo no localStorage (login via backend)
           try {
             const stored = String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim();
-            if (stored) return stored;
+            if (stored) {
+              const expMs = parseJwtExp(stored);
+              // Se expirar em < 60s, renova antes de usar (evita redirect ao login no meio da ação)
+              if (expMs && expMs - Date.now() < 60_000) {
+                const refreshed = await refreshAccessToken();
+                return refreshed || stored;
+              }
+              return stored;
+            }
           } catch {}
 
           // 2) Fallback: sessão do supabase-js (quando disponível)
@@ -87,6 +108,8 @@
           try {
             localStorage.setItem('SAFE_ACCESS_TOKEN', nextAccess);
             localStorage.setItem('SAFE_REFRESH_TOKEN', nextRefresh);
+            const expiresIn = Number(json?.expires_in || 0) || 0;
+            if (expiresIn > 0) localStorage.setItem('SAFE_EXPIRES_AT', String(Date.now() + expiresIn * 1000));
           } catch {}
           return nextAccess;
         })().finally(() => {

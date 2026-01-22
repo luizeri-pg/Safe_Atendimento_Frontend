@@ -930,6 +930,8 @@ function getSOCUrl(data) {
                         localStorage.removeItem('loggedUser');
                         localStorage.removeItem('pacienteAtendimento');
                         localStorage.removeItem('SAFE_ACCESS_TOKEN');
+                localStorage.removeItem('SAFE_REFRESH_TOKEN');
+                localStorage.removeItem('SAFE_EXPIRES_AT');
                         // Mantemos preferências do usuário (userSettings) por padrão.
                         try {
                             const apiBase = window.API_CONFIG?.BASE_URL || null;
