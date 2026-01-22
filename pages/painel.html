@@ -291,6 +291,25 @@
         background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
       }
 
+      .senha-chamada {
+        animation: pulse 2s infinite;
+        border-radius: 24px !important;
+      }
+
+      .senha-chamada::before {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        width: 8px;
+      }
+
+      @keyframes pulse {
+        0%, 100% {
+          box-shadow: 0 12px 40px rgba(16, 185, 129, 0.4);
+        }
+        50% {
+          box-shadow: 0 12px 50px rgba(16, 185, 129, 0.6);
+        }
+      }
+
       .senha-info {
         display: flex;
         align-items: center;

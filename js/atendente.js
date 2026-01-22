@@ -41,8 +41,12 @@
               .select('senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id')
               .in('status', ['cadastro', 'pendente'])
               .is('medico_atendendo_id', null)
-              .order('updated_at', { ascending: false });
-            if (error) throw error;
+              .order('updated_at', { ascending: false })
+              .limit(200);
+            if (error) {
+              console.error('Erro ao buscar senhas do Supabase:', error);
+              throw error;
+            }
             senhas = (Array.isArray(data) ? data : []).map((s) => ({
               senha: s.senha,
               nome: s.nome,
@@ -55,11 +59,23 @@
             }));
           } else {
             const res = await fetch(API_URL);
+            if (!res.ok) {
+              throw new Error(`Erro ao buscar senhas: ${res.status}`);
+            }
             senhas = await res.json();
+            // Garantir que é um array
+            if (!Array.isArray(senhas)) {
+              console.warn('[Atendente] Resposta não é um array:', senhas);
+              senhas = [];
+            }
           }
+          
           const lista = document.getElementById("senhaLista");
           const semSenhas = document.getElementById("semSenhas");
           lista.innerHTML = "";
+          
+          // Debug: log das senhas recebidas
+          console.log(`[Atendente] Total de senhas recebidas: ${senhas.length}`);
           
           const visiveis = (Array.isArray(senhas) ? senhas : []).filter((s) => {
             const status = s?.status ? String(s.status).trim() : "";
@@ -72,9 +88,13 @@
             if (status === "em_atendimento") return false;
             if (temMarcadorAtendimento || temMedicoAtendendo) return false;
 
-            // Mostramos somente: cadastros (sem nome) e pendentes (fila)
+            // Mostramos somente: cadastros (sem nome ou com nome) e pendentes (fila)
+            // IMPORTANTE: Mostrar cadastros mesmo sem nome para o atendente poder cadastrar
             return status === "cadastro" || status === "pendente";
           });
+          
+          // Debug: log das senhas visíveis
+          console.log(`[Atendente] Senhas visíveis após filtro: ${visiveis.length}`);
 
           if (visiveis.length === 0) {
             semSenhas.classList.remove("hidden");

@@ -6,6 +6,7 @@ let paciente = null;
 let consulta = null;
 let consultasSOC = [];
 let filaSemAgendamento = [];
+let cpfNaoEncontradoNoSOC = false; // Flag para indicar se CPF não foi encontrado no SOC
 
 // URLs da API - carregadas do config.js
 const API_BASE_URL = window.API_CONFIG?.BASE_URL || "http://localhost:3000/api";
@@ -72,27 +73,20 @@ function gerarSenhaSemAgendamento() {
 
 async function registrarSenhaSemAgendamento(senha) {
   try {
-    // Preferir Supabase quando configurado (totem não exige login; exige policy específica no Supabase se for usar em produção).
-    if (window.safeSupabase) {
-      const { error } = await window.safeSupabase.from('senhas').insert([
-        {
-          senha,
-          status: 'cadastro',
-          soc_status: 'nao_verificado'
-        }
-      ]);
-      if (error) throw error;
-      return true;
-    }
-
+    // Sempre usar o backend como proxy (evita problemas de RLS/CORS)
+    // O backend tenta inserir no Supabase primeiro, depois fallback para SQLite
     const res = await fetch(`${API_BASE_URL}/senhas`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ senha }) // Não envia nome!
     });
-    if (!res.ok) throw new Error('Erro ao registrar senha no backend');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Erro ao registrar senha no backend');
+    }
     return true;
   } catch (e) {
+    console.error('Erro ao registrar senha:', e);
     return false;
   }
 }
@@ -129,10 +123,19 @@ function render() {
       </div>
     `;
   } else if (step === 3 && senha) {
+    // Mensagem diferente se CPF não foi encontrado no SOC
+    const mensagem = cpfNaoEncontradoNoSOC 
+      ? `<div class="text-gray-800 text-2xl mb-7 text-center bg-white/50 rounded-xl py-4">
+           Por favor, dirija-se ao atendente para completar seu cadastro.
+         </div>`
+      : `<div class="text-gray-800 text-2xl mb-7 text-center bg-white/50 rounded-xl py-4">
+           Por favor, aguarde ser chamado no painel.<br>Obrigado!
+         </div>`;
+    
     app.innerHTML = `
       <div class="text-gray-900 text-4xl font-bold mb-9 text-center tracking-wide">Sua senha de atendimento</div>
       <div class="bg-white text-blue-500 text-6xl font-black rounded-[20px] py-9 px-18 my-9 shadow-lg tracking-wider">${senha}</div>
-      <div class="text-gray-800 text-2xl mb-7 text-center bg-white/50 rounded-xl py-4">Por favor, aguarde ser chamado no painel.<br>Obrigado!</div>
+      ${mensagem}
       <button class="bg-gradient-to-r from-blue-500 to-secondary-500 text-white border-none rounded-xl py-6 px-14 text-2xl font-bold cursor-pointer mt-4 shadow-lg transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 hover:scale-105 mx-auto block" onclick="voltarInicio()">Novo atendimento</button>
     `;
   }
@@ -154,6 +157,7 @@ async function buscarPorCPF() {
   }
 
   // Carregar dados do SOC se ainda não carregou
+  // Se o SOC não estiver disponível, permite cadastro mesmo assim (array vazio)
   if (consultasSOC.length === 0) {
     try {
       // Buscar SOC com data de hoje
@@ -164,18 +168,26 @@ async function buscarPorCPF() {
       const hoje = `${yyyy}-${mm}-${dd}`; // YYYY-MM-DD (data local)
       const socUrl = getSOCUrl(hoje);
       const res = await fetch(socUrl);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        consultasSOC = data;
-      } else if (window.API_CONFIG?.extractFirstArray) {
-        consultasSOC = window.API_CONFIG.extractFirstArray(data) || [];
-      } else {
-        // fallback bem simples
+      
+      // Se a resposta não for OK, trata como array vazio (permite cadastro)
+      if (!res.ok) {
+        console.warn('SOC não disponível, permitindo cadastro direto');
         consultasSOC = [];
+      } else {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          consultasSOC = data;
+        } else if (window.API_CONFIG?.extractFirstArray) {
+          consultasSOC = window.API_CONFIG.extractFirstArray(data) || [];
+        } else {
+          // fallback bem simples
+          consultasSOC = [];
+        }
       }
     } catch (e) {
-      erroDiv.innerText = "Erro ao buscar dados do SOC.";
-      return;
+      // Em caso de erro, permite cadastro mesmo assim (não bloqueia)
+      console.warn('Erro ao buscar dados do SOC, permitindo cadastro direto:', e);
+      consultasSOC = [];
     }
   }
 
@@ -190,40 +202,35 @@ async function buscarPorCPF() {
 
   if (consultasPaciente.length === 0) {
     // CPF não encontrado no SOC - gera senha e registra (sem nome).
+    cpfNaoEncontradoNoSOC = true; // Marca que não foi encontrado no SOC
     const cpfCadastro = cpfLimpo || cpf;
     const senhaGerada = gerarSenhaSemAgendamento();
     try {
-      if (window.safeSupabase) {
-        const { error } = await window.safeSupabase.from('senhas').insert([
-          {
-            senha: senhaGerada,
-            cpf: cpfCadastro,
-            status: 'cadastro',
-            soc_status: 'nao_verificado'
-          }
-        ]);
-        if (error) throw error;
-      } else {
-        const res = await fetch(`${API_BASE_URL}/senhas`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            senha: senhaGerada,
-            cpf: cpfCadastro
-          })
-        });
-        if (!res.ok) throw new Error("Falha ao registrar senha");
+      // Sempre usar o backend como proxy (evita problemas de RLS/CORS)
+      const res = await fetch(`${API_BASE_URL}/senhas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senha: senhaGerada,
+          cpf: cpfCadastro
+        })
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Falha ao registrar senha");
       }
 
       senha = senhaGerada;
       step = 3;
       render();
     } catch (e) {
+      console.error('Erro ao gerar senha:', e);
       erroDiv.innerText = "Erro ao gerar senha. Tente novamente.";
       return;
     }
   } else {
     // CPF encontrado - mostra dados do agendamento
+    cpfNaoEncontradoNoSOC = false; // Reset da flag
     paciente = consultasPaciente[0];
     consulta = consultasPaciente[0];
     step = 2;
@@ -237,32 +244,26 @@ async function confirmarAtendimento() {
 
   try {
     // Para totem, gravamos somente como "cadastro" (atendente valida/triagem e libera).
-    // Em produção, se quiser gravar nome/CPF direto, crie policy específica e avalie LGPD/privacidade.
-    if (window.safeSupabase) {
-      const { error } = await window.safeSupabase.from('senhas').insert([
-        {
-          senha: String(senha),
-          cpf: String(paciente.CPFFUNCIONARIO || '').replace(/\D/g, ''),
-          status: 'cadastro',
-          soc_status: 'encontrado'
-        }
-      ]);
-      if (error) throw error;
-    } else {
-      await fetch(`${API_BASE_URL}/senhas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          senha: senha,
-          nome: paciente.NOMEFUNCIONARIO,
-          cpf: paciente.CPFFUNCIONARIO,
-        }),
-      });
+    // Sempre usar o backend como proxy (evita problemas de RLS/CORS)
+    const cpfLimpo = String(paciente.CPFFUNCIONARIO || '').replace(/\D/g, '');
+    const res = await fetch(`${API_BASE_URL}/senhas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        senha: String(senha),
+        cpf: cpfLimpo || undefined,
+        nome: paciente.NOMEFUNCIONARIO || undefined
+      })
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.message || "Falha ao registrar senha");
     }
     // erro silencioso
   } catch (e) {
     // erro silencioso
   }
+  cpfNaoEncontradoNoSOC = false; // CPF foi encontrado no SOC, então reset da flag
   step = 3;
   render();
 }
@@ -273,6 +274,7 @@ function voltarInicio() {
   senha = "";
   paciente = null;
   consulta = null;
+  cpfNaoEncontradoNoSOC = false; // Reset da flag
   render();
 }
 

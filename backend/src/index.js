@@ -1,3 +1,4 @@
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -11,6 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.join(__dirname, "..", "..");
 const CWD_ROOT = process.cwd();
+
+// Carrega o .env da raiz do projeto
+dotenv.config({ path: path.join(REPO_ROOT, ".env") });
 
 const PORT = Number(process.env.PORT || 3000);
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "..", "data.sqlite");
@@ -213,6 +217,74 @@ function extractFirstArray(value, maxDepth = 4) {
 
 // Healthcheck
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// Consultar senhas do Supabase via REST API
+app.get("/api/senhas/supabase", async (req, res) => {
+  try {
+    const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+    const supabaseAnonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return sendError(res, 500, "Credenciais do Supabase não configuradas no .env");
+    }
+
+    // Colunas solicitadas: senha, cpf, status, soc_status
+    // Permite override via query param "columns"
+    const requestedColumns = req.query.columns 
+      ? String(req.query.columns).split(",").map(c => c.trim()).filter(Boolean)
+      : ["senha", "cpf", "status", "soc_status"];
+    
+    const columnsParam = requestedColumns.map((c) => `"${c}"`).join(",");
+
+    // Construir URL com query params opcionais
+    let url = `${supabaseUrl}/rest/v1/senhas?columns=${encodeURIComponent(columnsParam)}`;
+    
+    // Suporta filtros comuns do Supabase REST API
+    if (req.query.select) {
+      url += `&select=${encodeURIComponent(req.query.select)}`;
+    }
+    if (req.query.order) {
+      url += `&order=${encodeURIComponent(req.query.order)}`;
+    }
+    if (req.query.limit) {
+      url += `&limit=${encodeURIComponent(req.query.limit)}`;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        "apikey": supabaseAnonKey,
+        "Authorization": `Bearer ${supabaseAnonKey}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      }
+    }).finally(() => clearTimeout(timeoutId));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return sendError(res, response.status, "Erro ao consultar Supabase", {
+        status: response.status,
+        statusText: response.statusText,
+        detail: errorText.slice(0, 500),
+        url: url.replace(supabaseAnonKey, "***")
+      });
+    }
+
+    const data = await response.json();
+    return res.json({
+      success: true,
+      count: Array.isArray(data) ? data.length : 0,
+      data: data
+    });
+  } catch (e) {
+    const msg = e?.name === "AbortError" ? "Timeout ao consultar Supabase" : "Falha ao consultar Supabase";
+    return sendError(res, 502, msg, { detail: String(e?.message || e) });
+  }
+});
 
 // Usuários: login (para o fluxo do frontend)
 app.post("/api/usuarios/login", async (req, res) => {
@@ -431,27 +503,29 @@ app.get("/api/soc", async (req, res) => {
     const bodyText = await response.text();
 
     if (!response.ok) {
-      return sendError(res, response.status, "Erro ao consultar SOC", {
-        status: response.status,
-        statusText: response.statusText,
-        contentType,
-        // Retorna um trecho para debug sem “spammar”:
-        bodySnippet: bodyText.slice(0, 800)
-      });
+      // Se o SOC não estiver disponível, retorna array vazio para permitir cadastro
+      // Log do erro para debug, mas não bloqueia o fluxo
+      console.warn(`[SOC] Erro ao consultar SOC (${response.status}):`, bodyText.slice(0, 200));
+      return res.json([]);
     }
 
-    // Tenta JSON; se falhar, devolve o texto bruto (alguns erros do SOC vêm em texto).
+    // Tenta JSON; se falhar, devolve array vazio (permite cadastro mesmo com erro de parse)
     try {
       const json = JSON.parse(bodyText);
       // Se vier um objeto "embrulhado", tenta normalizar para array (compat com o frontend).
       const arr = extractFirstArray(json);
       return res.json(arr || []);
-    } catch {
-      return res.type("text/plain").send(bodyText);
+    } catch (parseError) {
+      // Se não conseguir fazer parse, retorna array vazio para não bloquear cadastro
+      console.warn("[SOC] Erro ao fazer parse da resposta:", parseError);
+      return res.json([]);
     }
   } catch (e) {
+    // Se houver qualquer erro (timeout, rede, etc), retorna array vazio
+    // Isso permite que o sistema continue funcionando mesmo sem SOC
     const msg = e?.name === "AbortError" ? "Timeout ao consultar SOC" : "Falha ao consultar SOC";
-    return sendError(res, 502, msg, { detail: String(e?.message || e) });
+    console.warn(`[SOC] ${msg}:`, String(e?.message || e));
+    return res.json([]);
   }
 });
 
@@ -514,22 +588,64 @@ app.post("/api/senhas", async (req, res) => {
     // Se não vier nome/cpf, mantém status cadastro; se vier, pendente (fila)
     const status = nome ? "pendente" : "cadastro";
 
-    await run(
-      db,
-      `INSERT OR IGNORE INTO senhas (senha, nome, cpf, status, data, encaminhamento_json)
-       VALUES (?, ?, ?, ?, ?, NULL)`,
-      [senha, nome, cpf, status, nowIso()]
-    );
+    // OBRIGATÓRIO: Salvar apenas no Supabase (sem fallback para SQLite)
+    const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+    const supabaseServiceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
+    const socStatus = req.body?.soc_status || "nao_verificado";
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return sendError(res, 500, "Supabase não configurado. Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env");
+    }
 
-    // Retorna o registro atual
-    const row = await get(
-      db,
-      `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
-       FROM senhas WHERE senha = ?`,
-      [senha]
-    );
+    try {
+      const supabasePayload = {
+        senha: senha,
+        status: status,
+        soc_status: socStatus
+      };
+      
+      if (nome) supabasePayload.nome = nome;
+      if (cpf) supabasePayload.cpf = cpf;
 
-    res.status(201).json(parseEncaminhamento(row));
+      const supabaseResponse = await fetch(`${supabaseUrl}/rest/v1/senhas`, {
+        method: "POST",
+        headers: {
+          "apikey": supabaseServiceKey,
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify(supabasePayload)
+      });
+
+      if (!supabaseResponse.ok) {
+        const errorText = await supabaseResponse.text();
+        console.error("Erro ao inserir no Supabase:", {
+          status: supabaseResponse.status,
+          statusText: supabaseResponse.statusText,
+          body: errorText.slice(0, 500)
+        });
+        return sendError(res, supabaseResponse.status, "Erro ao salvar senha no Supabase", {
+          detail: errorText.slice(0, 500)
+        });
+      }
+
+      const supabaseData = await supabaseResponse.json();
+      // Retorna no formato esperado pelo frontend
+      return res.status(201).json({
+        senha: supabaseData[0]?.senha || senha,
+        nome: supabaseData[0]?.nome || nome,
+        cpf: supabaseData[0]?.cpf || cpf,
+        status: supabaseData[0]?.status || status,
+        soc_status: supabaseData[0]?.soc_status || "nao_verificado",
+        data: supabaseData[0]?.created_at || nowIso()
+      });
+    } catch (supabaseError) {
+      console.error("Erro ao inserir no Supabase:", supabaseError);
+      return sendError(res, 500, "Erro ao salvar senha no Supabase", {
+        detail: String(supabaseError?.message || supabaseError)
+      });
+    }
   } catch (e) {
     sendError(res, 500, "Erro ao criar senha");
   }
@@ -541,95 +657,126 @@ app.patch("/api/senhas/:senha", async (req, res) => {
     const senha = normalizeSenha(req.params.senha);
     if (!senha) return sendError(res, 400, "Senha inválida");
 
-    const existing = await get(db, `SELECT * FROM senhas WHERE senha = ?`, [senha]);
-    if (!existing) return sendError(res, 404, "Senha não encontrada");
+    // OBRIGATÓRIO: Usar apenas Supabase
+    const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+    const supabaseServiceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return sendError(res, 500, "Supabase não configurado. Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env");
+    }
+
+    // Buscar senha existente no Supabase
+    const getResponse = await fetch(`${supabaseUrl}/rest/v1/senhas?senha=eq.${encodeURIComponent(senha)}&select=*`, {
+      method: "GET",
+      headers: {
+        "apikey": supabaseServiceKey,
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!getResponse.ok) {
+      return sendError(res, getResponse.status, "Erro ao buscar senha no Supabase");
+    }
+
+    const existingData = await getResponse.json();
+    if (!Array.isArray(existingData) || existingData.length === 0) {
+      return sendError(res, 404, "Senha não encontrada");
+    }
+
+    const existing = existingData[0];
 
     const nome = req.body?.nome != null ? String(req.body.nome).trim() : undefined;
     const cpf = req.body?.cpf != null ? normalizeCpf(req.body.cpf) : undefined;
     const status = req.body?.status != null ? String(req.body.status).trim() : undefined;
-    const medicoAtendendo =
-      req.body?.medicoAtendendo != null ? String(req.body.medicoAtendendo).trim() : undefined;
-    const medicoAtendendoEmail =
-      req.body?.medicoAtendendoEmail != null
-        ? String(req.body.medicoAtendendoEmail).trim()
-        : undefined;
-
     // encaminhamento pode vir como objeto
     const encaminhamento =
       req.body?.encaminhamento != null && typeof req.body.encaminhamento === "object"
         ? req.body.encaminhamento
         : undefined;
-
-    const updates = [];
-    const params = [];
+    
+    const medicoAtendendoId = req.body?.medico_atendendo_id || req.body?.medicoAtendendoId || undefined;
 
     const allowedStatus = new Set(["cadastro", "pendente", "em_atendimento", "atendida"]);
     if (status !== undefined && !allowedStatus.has(status)) {
       return sendError(res, 400, "Status inválido", { allowed: Array.from(allowedStatus) });
     }
 
-    if (nome !== undefined) {
-      updates.push("nome = ?");
-      params.push(nome);
-      // se preencheu nome e estava em cadastro, promove a pendente
-      if ((existing.status === "cadastro" || !existing.status) && status === undefined) {
-        updates.push("status = ?");
-        params.push("pendente");
-      }
-    }
-    if (cpf !== undefined) {
-      updates.push("cpf = ?");
-      params.push(cpf);
-      if ((existing.status === "cadastro" || !existing.status) && status === undefined) {
-        updates.push("status = ?");
-        params.push("pendente");
-      }
-    }
+    // Preparar payload para atualização no Supabase
+    const updatePayload = {};
+    
+    if (nome !== undefined) updatePayload.nome = nome;
+    if (cpf !== undefined) updatePayload.cpf = cpf;
+    if (medicoAtendendoId !== undefined) updatePayload.medico_atendendo_id = medicoAtendendoId;
+    if (encaminhamento !== undefined) updatePayload.encaminhamento = encaminhamento;
+    
+    // Determinar status final
+    let finalStatus = existing.status;
     if (status !== undefined) {
-      updates.push("status = ?");
-      params.push(status);
-    }
-    if (medicoAtendendo !== undefined) {
-      updates.push("medicoAtendendo = ?");
-      params.push(medicoAtendendo);
-    }
-    if (medicoAtendendoEmail !== undefined) {
-      updates.push("medicoAtendendoEmail = ?");
-      params.push(medicoAtendendoEmail);
-    }
-
-    // Regra: se um médico "chamou" (medicoAtendendo preenchido) e não veio status explícito,
-    // automaticamente tira da fila pública marcando como em_atendimento.
-    if (
+      finalStatus = status;
+    } else if (nome !== undefined && (existing.status === "cadastro" || !existing.status)) {
+      finalStatus = "pendente";
+    } else if (
       status === undefined &&
-      medicoAtendendo !== undefined &&
-      medicoAtendendo != null &&
-      String(medicoAtendendo).trim().length > 0 &&
+      medicoAtendendoId !== undefined &&
+      medicoAtendendoId != null &&
       existing.status !== "atendida"
     ) {
-      updates.push("status = ?");
-      params.push("em_atendimento");
+      finalStatus = "em_atendimento";
     }
-    if (encaminhamento !== undefined) {
-      updates.push("encaminhamento_json = ?");
-      params.push(JSON.stringify(encaminhamento));
+    updatePayload.status = finalStatus;
+    
+    // Atualizar updated_at (sempre)
+    updatePayload.updated_at = nowIso();
+    
+    // Se médico chamou, atualizar called_at
+    if (medicoAtendendoId !== undefined && medicoAtendendoId != null && !existing.called_at) {
+      updatePayload.called_at = nowIso();
     }
 
-    // sempre atualiza data (para ordenação do painel)
-    updates.push("data = ?");
-    params.push(nowIso());
+    // Atualizar no Supabase
+    const updateResponse = await fetch(`${supabaseUrl}/rest/v1/senhas?senha=eq.${encodeURIComponent(senha)}`, {
+      method: "PATCH",
+      headers: {
+        "apikey": supabaseServiceKey,
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(updatePayload)
+    });
 
-    await run(db, `UPDATE senhas SET ${updates.join(", ")} WHERE senha = ?`, [...params, senha]);
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text();
+      console.error("Erro ao atualizar no Supabase:", {
+        status: updateResponse.status,
+        statusText: updateResponse.statusText,
+        body: errorText.slice(0, 500)
+      });
+      return sendError(res, updateResponse.status, "Erro ao atualizar senha no Supabase", {
+        detail: errorText.slice(0, 500)
+      });
+    }
 
-    const row = await get(
-      db,
-      `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
-       FROM senhas WHERE senha = ?`,
-      [senha]
-    );
-    res.json(parseEncaminhamento(row));
+    const updatedData = await updateResponse.json();
+    const updated = Array.isArray(updatedData) ? updatedData[0] : updatedData;
+    
+    // Retornar no formato esperado pelo frontend
+    return res.json({
+      senha: updated.senha || senha,
+      nome: updated.nome || null,
+      cpf: updated.cpf || null,
+      status: updated.status || finalStatus,
+      data: updated.updated_at || updated.created_at || nowIso(),
+      encaminhamento: updated.encaminhamento || null,
+      medicoAtendendo: updated.medico_atendendo_id ? "Médico" : null,
+      medicoAtendendoEmail: null
+    });
   } catch (e) {
-    sendError(res, 500, "Erro ao atualizar senha");
+    console.error("Erro ao atualizar senha:", e);
+    return sendError(res, 500, "Erro ao atualizar senha", {
+      detail: String(e?.message || e)
+    });
   }
 });
 
@@ -641,29 +788,111 @@ app.post("/api/usuarios", async (req, res) => {
     const cpf = req.body?.cpf ? normalizeCpf(req.body.cpf) : null;
     if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
 
-    // Garante que a senha exista e já fica pendente
-    await run(
-      db,
-      `INSERT OR IGNORE INTO senhas (senha, nome, cpf, status, data, encaminhamento_json)
-       VALUES (?, ?, ?, 'pendente', ?, NULL)`,
-      [senha, nome, cpf, nowIso()]
-    );
-    await run(
-      db,
-      `UPDATE senhas SET nome = COALESCE(?, nome), cpf = COALESCE(?, cpf), status = 'pendente', data = ?
-       WHERE senha = ?`,
-      [nome, cpf, nowIso(), senha]
-    );
+    // OBRIGATÓRIO: Salvar apenas no Supabase
+    const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+    const supabaseServiceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return sendError(res, 500, "Supabase não configurado. Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env");
+    }
 
-    const row = await get(
-      db,
-      `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
-       FROM senhas WHERE senha = ?`,
-      [senha]
-    );
-    res.status(201).json(parseEncaminhamento(row));
-  } catch {
-    sendError(res, 500, "Erro ao cadastrar usuário");
+    try {
+      // Verificar se a senha já existe
+      const getResponse = await fetch(`${supabaseUrl}/rest/v1/senhas?senha=eq.${encodeURIComponent(senha)}&select=senha`, {
+        method: "GET",
+        headers: {
+          "apikey": supabaseServiceKey,
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      const existingData = await getResponse.json();
+      const exists = Array.isArray(existingData) && existingData.length > 0;
+
+      let supabaseData;
+      if (exists) {
+        // Atualizar senha existente
+        const updatePayload = {
+          status: "pendente",
+          updated_at: nowIso()
+        };
+        if (nome) updatePayload.nome = nome;
+        if (cpf) updatePayload.cpf = cpf;
+
+        const updateResponse = await fetch(`${supabaseUrl}/rest/v1/senhas?senha=eq.${encodeURIComponent(senha)}`, {
+          method: "PATCH",
+          headers: {
+            "apikey": supabaseServiceKey,
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+          },
+          body: JSON.stringify(updatePayload)
+        });
+
+        if (!updateResponse.ok) {
+          const errorText = await updateResponse.text();
+          return sendError(res, updateResponse.status, "Erro ao atualizar senha no Supabase", {
+            detail: errorText.slice(0, 500)
+          });
+        }
+
+        supabaseData = await updateResponse.json();
+      } else {
+        // Criar nova senha
+        const supabasePayload = {
+          senha: senha,
+          status: "pendente",
+          soc_status: "nao_verificado"
+        };
+        
+        if (nome) supabasePayload.nome = nome;
+        if (cpf) supabasePayload.cpf = cpf;
+
+        const createResponse = await fetch(`${supabaseUrl}/rest/v1/senhas`, {
+          method: "POST",
+          headers: {
+            "apikey": supabaseServiceKey,
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+          },
+          body: JSON.stringify(supabasePayload)
+        });
+
+        if (!createResponse.ok) {
+          const errorText = await createResponse.text();
+          return sendError(res, createResponse.status, "Erro ao criar senha no Supabase", {
+            detail: errorText.slice(0, 500)
+          });
+        }
+
+        supabaseData = await createResponse.json();
+      }
+
+      const result = Array.isArray(supabaseData) ? supabaseData[0] : supabaseData;
+      return res.status(201).json({
+        senha: result.senha || senha,
+        nome: result.nome || nome,
+        cpf: result.cpf || cpf,
+        status: result.status || "pendente",
+        data: result.updated_at || result.created_at || nowIso(),
+        encaminhamento: result.encaminhamento || null,
+        medicoAtendendo: null,
+        medicoAtendendoEmail: null
+      });
+    } catch (supabaseError) {
+      console.error("Erro ao salvar no Supabase:", supabaseError);
+      return sendError(res, 500, "Erro ao cadastrar usuário no Supabase", {
+        detail: String(supabaseError?.message || supabaseError)
+      });
+    }
+  } catch (e) {
+    console.error("Erro ao cadastrar usuário:", e);
+    return sendError(res, 500, "Erro ao cadastrar usuário", {
+      detail: String(e?.message || e)
+    });
   }
 });
 
@@ -722,8 +951,32 @@ app.post("/api/encaminhamento", async (req, res) => {
     if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
     if (!medicoDestino) return sendError(res, 400, "Campo 'medicoDestino' é obrigatório");
 
-    const existing = await get(db, `SELECT senha FROM senhas WHERE senha = ?`, [senha]);
-    if (!existing) return sendError(res, 404, "Senha não encontrada");
+    // OBRIGATÓRIO: Usar apenas Supabase
+    const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+    const supabaseServiceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "").trim();
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return sendError(res, 500, "Supabase não configurado. Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env");
+    }
+
+    // Verificar se a senha existe
+    const getResponse = await fetch(`${supabaseUrl}/rest/v1/senhas?senha=eq.${encodeURIComponent(senha)}&select=senha`, {
+      method: "GET",
+      headers: {
+        "apikey": supabaseServiceKey,
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!getResponse.ok) {
+      return sendError(res, getResponse.status, "Erro ao buscar senha no Supabase");
+    }
+
+    const existingData = await getResponse.json();
+    if (!Array.isArray(existingData) || existingData.length === 0) {
+      return sendError(res, 404, "Senha não encontrada");
+    }
 
     const payload = {
       medicoOrigem,
@@ -732,23 +985,55 @@ app.post("/api/encaminhamento", async (req, res) => {
       data: nowIso()
     };
 
-    await run(
-      db,
-      `UPDATE senhas
-       SET encaminhamento_json = ?, status = 'pendente', medicoAtendendo = NULL, medicoAtendendoEmail = NULL, data = ?
-       WHERE senha = ?`,
-      [JSON.stringify(payload), nowIso(), senha]
-    );
+    // Atualizar no Supabase
+    const updatePayload = {
+      encaminhamento: payload,
+      status: "pendente",
+      medico_atendendo_id: null,
+      updated_at: nowIso()
+    };
 
-    const row = await get(
-      db,
-      `SELECT senha, nome, cpf, status, data, encaminhamento_json, medicoAtendendo, medicoAtendendoEmail
-       FROM senhas WHERE senha = ?`,
-      [senha]
-    );
-    res.status(201).json(parseEncaminhamento(row));
-  } catch {
-    sendError(res, 500, "Erro ao encaminhar paciente");
+    const updateResponse = await fetch(`${supabaseUrl}/rest/v1/senhas?senha=eq.${encodeURIComponent(senha)}`, {
+      method: "PATCH",
+      headers: {
+        "apikey": supabaseServiceKey,
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify(updatePayload)
+    });
+
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text();
+      console.error("Erro ao atualizar encaminhamento no Supabase:", {
+        status: updateResponse.status,
+        statusText: updateResponse.statusText,
+        body: errorText.slice(0, 500)
+      });
+      return sendError(res, updateResponse.status, "Erro ao encaminhar paciente no Supabase", {
+        detail: errorText.slice(0, 500)
+      });
+    }
+
+    const updatedData = await updateResponse.json();
+    const updated = Array.isArray(updatedData) ? updatedData[0] : updatedData;
+    
+    return res.status(201).json({
+      senha: updated.senha || senha,
+      nome: updated.nome || null,
+      cpf: updated.cpf || null,
+      status: updated.status || "pendente",
+      data: updated.updated_at || updated.created_at || nowIso(),
+      encaminhamento: updated.encaminhamento || payload,
+      medicoAtendendo: null,
+      medicoAtendendoEmail: null
+    });
+  } catch (e) {
+    console.error("Erro ao encaminhar paciente:", e);
+    return sendError(res, 500, "Erro ao encaminhar paciente", {
+      detail: String(e?.message || e)
+    });
   }
 });
 
