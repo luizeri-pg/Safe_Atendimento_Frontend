@@ -36,10 +36,15 @@
         try {
           let senhas = [];
           // Sempre usar o backend como proxy em produção (evita CORS do Safari com supabase.co).
-          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-            const { data: sessionData } = await window.safeSupabase.auth.getSession();
-            const token = sessionData?.session?.access_token || null;
-            if (!token) throw new Error('Sem sessão do Supabase');
+          if (window.API_CONFIG?.BASE_URL) {
+            const token = (function () {
+              try {
+                return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
+              } catch {
+                return null;
+              }
+            })();
+            if (!token) throw new Error('Sem token de autenticação');
 
             const res = await fetch(
               `${window.API_CONFIG.BASE_URL}/supa/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&status=in.(cadastro,pendente)&medico_atendendo_id=is.null&order=updated_at.desc&limit=200`,
@@ -236,20 +241,17 @@
         const nome = document.getElementById("inputNome").value.trim();
         const cpf = document.getElementById("inputCpf").value.trim();
         if (!nome || !cpf) return;
-        if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-          const { data: sessionData } = await window.safeSupabase.auth.getSession().catch(() => ({ data: null }));
-          const token =
-            sessionData?.session?.access_token ||
-            (function () {
-              try {
-                return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
-              } catch {
-                return null;
-              }
-            })();
-          if (!token) throw new Error('Sem sessão do Supabase');
+        if (window.API_CONFIG?.BASE_URL) {
+          const token = (function () {
+            try {
+              return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
+            } catch {
+              return null;
+            }
+          })();
+          if (!token) throw new Error('Sem token de autenticação');
 
-          const res = await fetch(`${window.API_CONFIG.BASE_URL}/supa/rpc/triar_senha`, {
+          const res = await fetch(`${window.API_CONFIG.BASE_URL}/atendimento/triar`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -257,13 +259,13 @@
               Accept: 'application/json'
             },
             body: JSON.stringify({
-              p_senha: senhaParaCadastro,
-              p_nome: nome,
-              p_cpf: cpf,
-              p_soc_status: 'nao_verificado'
+              senha: senhaParaCadastro,
+              nome,
+              cpf,
+              soc_status: 'nao_verificado'
             })
           });
-          if (!res.ok) throw new Error(`Falha ao triar via proxy (${res.status})`);
+          if (!res.ok) throw new Error(`Falha ao triar via backend (${res.status})`);
         } else {
           // Atualiza senha no backend (PATCH para adicionar nome/cpf e mudar status para pendente)
           await fetch(
@@ -286,20 +288,17 @@
         e.preventDefault();
         const nome = document.getElementById("inputNomeEditar").value.trim();
         if (!nome) return;
-        if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-          const { data: sessionData } = await window.safeSupabase.auth.getSession().catch(() => ({ data: null }));
-          const token =
-            sessionData?.session?.access_token ||
-            (function () {
-              try {
-                return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
-              } catch {
-                return null;
-              }
-            })();
-          if (!token) throw new Error('Sem sessão do Supabase');
+        if (window.API_CONFIG?.BASE_URL) {
+          const token = (function () {
+            try {
+              return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
+            } catch {
+              return null;
+            }
+          })();
+          if (!token) throw new Error('Sem token de autenticação');
 
-          // Buscar cpf/soc_status via proxy
+          // Buscar cpf/soc_status via proxy (somente leitura)
           const getRes = await fetch(
             `${window.API_CONFIG.BASE_URL}/supa/senhas?select=cpf,soc_status&senha=eq.${encodeURIComponent(senhaParaEditar)}&limit=1`,
             { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
@@ -308,7 +307,7 @@
           const arr = await getRes.json().catch(() => []);
           const row = Array.isArray(arr) ? arr[0] : arr;
 
-          const res = await fetch(`${window.API_CONFIG.BASE_URL}/supa/rpc/triar_senha`, {
+          const res = await fetch(`${window.API_CONFIG.BASE_URL}/atendimento/triar`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -316,13 +315,13 @@
               Accept: 'application/json'
             },
             body: JSON.stringify({
-              p_senha: senhaParaEditar,
-              p_nome: nome,
-              p_cpf: row?.cpf || '',
-              p_soc_status: row?.soc_status || 'nao_verificado'
+              senha: senhaParaEditar,
+              nome,
+              cpf: row?.cpf || '',
+              soc_status: row?.soc_status || 'nao_verificado'
             })
           });
-          if (!res.ok) throw new Error(`Falha ao atualizar via proxy (${res.status})`);
+          if (!res.ok) throw new Error(`Falha ao atualizar via backend (${res.status})`);
         } else {
           // Atualiza apenas o nome no backend
           await fetch(

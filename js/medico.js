@@ -123,7 +123,33 @@
           // segue
         }
 
-        // 2) Recuperar pelo Supabase (auth) + profile via proxy (evita CORS no Safari)
+        // 2) Backend-first: se existe token, buscar perfil no backend
+        try {
+          const apiBase = window.API_CONFIG?.BASE_URL || null;
+          const token = await getAccessToken();
+          if (apiBase && token) {
+            const meRes = await fetch(`${apiBase}/auth/me`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+            });
+            if (meRes.ok) {
+              const me = await meRes.json().catch(() => null);
+              const profile = me?.profile || null;
+              if (profile?.role) {
+                const normalized = {
+                  id: profile.id,
+                  username: profile.username,
+                  nome: profile.nome,
+                  role: normalizeRole(profile.role),
+                };
+                localStorage.setItem('loggedUser', JSON.stringify(normalized));
+                return normalized;
+              }
+            }
+          }
+        } catch {}
+
+        // 3) Recuperar pelo Supabase (auth) + profile via proxy (fallback legado)
         const supa = window.safeSupabase;
         if (!supa) return null;
         try {
@@ -270,7 +296,7 @@
 
           // Fonte de dados: Supabase (preferencial) ou backend antigo (fallback)
           let senhas = [];
-          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+          if (window.API_CONFIG?.BASE_URL && (await getAccessToken())) {
             // Buscar profiles via proxy (evita CORS no browser)
             const profilesById = {};
             try {
@@ -730,7 +756,7 @@
         try {
           // Busca dados do paciente
           let paciente = null;
-          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+          if (window.API_CONFIG?.BASE_URL && (await getAccessToken())) {
             const resOne = await supaProxyFetch(
               `/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&senha=eq.${encodeURIComponent(
                 senha
@@ -762,12 +788,18 @@
             const medicoAtualNome = document.getElementById('medicoNome').textContent;
             const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
             
-            if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-              // Chamada ATÔMICA via RPC (via proxy no backend, evita CORS no Safari)
-              const callRes = await supaProxyFetch(`/rpc/chamar_senha`, {
+            if (window.API_CONFIG?.BASE_URL && (await getAccessToken())) {
+              // Novo fluxo: backend-first
+              const token = await getAccessToken();
+              if (!token) throw new Error('Sem token de autenticação');
+              const callRes = await fetch(`${window.API_CONFIG.BASE_URL}/atendimento/chamar`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ p_senha: senha })
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json'
+                },
+                body: JSON.stringify({ senha })
               });
               if (!callRes.ok) {
                 alert('Esta senha não está mais disponível (já foi chamada ou não pode ser chamada).');
@@ -865,13 +897,19 @@
         if (!confirmacao) return;
         
         try {
-          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-            const resFinal = await supaProxyFetch(`/rpc/finalizar_senha`, {
+          if (window.API_CONFIG?.BASE_URL && (await getAccessToken())) {
+            const token = await getAccessToken();
+            if (!token) throw new Error('Sem token de autenticação');
+            const resFinal = await fetch(`${window.API_CONFIG.BASE_URL}/atendimento/finalizar`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ p_senha: pacienteAtual.senha })
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+              },
+              body: JSON.stringify({ senha: pacienteAtual.senha })
             });
-            if (!resFinal.ok) throw new Error('Falha ao finalizar via proxy');
+            if (!resFinal.ok) throw new Error('Falha ao finalizar via backend');
           } else {
             const url = getAPIUrl();
             await fetch(`${url}/${encodeURIComponent(pacienteAtual.senha)}`, {
@@ -1026,7 +1064,7 @@
       async function carregarMedicosAtivos() {
         try {
           // Em produção: usar proxy do backend (evita CORS no Safari)
-          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+          if (window.API_CONFIG?.BASE_URL && (await getAccessToken())) {
             const loggedUser = JSON.parse(localStorage.getItem('loggedUser') || '{}');
             const myId = loggedUser?.id || null;
 
@@ -1468,7 +1506,7 @@
       async function aceitarEncaminhamento(senha) {
         try {
           let paciente = null;
-          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
+          if (window.API_CONFIG?.BASE_URL && (await getAccessToken())) {
             const resOne = await supaProxyFetch(
               `/senhas?select=senha,nome,cpf,status,encaminhamento&senha=eq.${encodeURIComponent(senha)}&limit=1`
             );
@@ -1514,13 +1552,19 @@
           
           if (!confirmacao) return;
           
-          if (window.API_CONFIG?.BASE_URL && window.safeSupabase) {
-            const resAcc = await supaProxyFetch(`/rpc/aceitar_encaminhamento`, {
+          if (window.API_CONFIG?.BASE_URL && (await getAccessToken())) {
+            const token = await getAccessToken();
+            if (!token) throw new Error('Sem token de autenticação');
+            const resAcc = await fetch(`${window.API_CONFIG.BASE_URL}/atendimento/aceitar`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ p_senha: senha })
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                Accept: 'application/json'
+              },
+              body: JSON.stringify({ senha })
             });
-            if (!resAcc.ok) throw new Error('Falha ao aceitar encaminhamento via proxy');
+            if (!resAcc.ok) throw new Error('Falha ao aceitar encaminhamento via backend');
           } else {
             const url = getAPIUrl();
             const encaminhamentoAtualizado = {

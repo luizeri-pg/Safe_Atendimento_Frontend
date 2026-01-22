@@ -343,6 +343,178 @@ app.post("/api/atendimento/encaminhar", async (req, res) => {
   }
 });
 
+app.post("/api/auth/me", async (req, res) => {
+  try {
+    const authHeader = getBearerAuth(req);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    // Recupera usuário atual via Auth (para obter user.id)
+    const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: "GET",
+      headers: { apikey, Authorization: authHeader, Accept: "application/json" }
+    });
+    const userTxt = await userRes.text();
+    if (!userRes.ok) {
+      return sendError(res, userRes.status, "Sessão inválida", { detail: userTxt.slice(0, 300) });
+    }
+    const userJson = JSON.parse(userTxt || "{}");
+    const userId = String(userJson?.id || "").trim();
+    if (!userId) return sendError(res, 401, "Sessão inválida (sem usuário)");
+
+    const profRes = await fetch(
+      `${supabaseUrl}/rest/v1/profiles?select=id,username,nome,role&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      { method: "GET", headers: { apikey, Authorization: authHeader, Accept: "application/json" } }
+    );
+    if (!profRes.ok) {
+      const txt = await profRes.text().catch(() => "");
+      return sendError(res, profRes.status, "Erro ao carregar perfil", { detail: txt.slice(0, 300) });
+    }
+    const arr = await profRes.json().catch(() => []);
+    const profile = Array.isArray(arr) ? arr[0] : arr;
+    if (!profile?.role) return sendError(res, 404, "Perfil não encontrado (tabela profiles)");
+
+    return res.json({ user: { id: userId, email: userJson?.email || null }, profile });
+  } catch (e) {
+    console.error("Erro em /api/auth/me:", e);
+    return sendError(res, 500, "Erro ao validar sessão", { detail: String(e?.message || e) });
+  }
+});
+
+async function callSupabaseRpc({ supabaseUrl, apikey, authHeader, rpcName, rpcBody }) {
+  const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/${rpcName}`, {
+    method: "POST",
+    headers: {
+      apikey,
+      Authorization: authHeader,
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    },
+    body: JSON.stringify(rpcBody || {})
+  });
+  const txt = await rpcRes.text();
+  return { ok: rpcRes.ok, status: rpcRes.status, text: txt };
+}
+
+app.post("/api/atendimento/chamar", async (req, res) => {
+  try {
+    const authHeader = getBearerAuth(req);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+    const senha = normalizeSenha(req.body?.senha);
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    const out = await callSupabaseRpc({
+      supabaseUrl,
+      apikey,
+      authHeader,
+      rpcName: "chamar_senha",
+      rpcBody: { p_senha: senha }
+    });
+    if (!out.ok) return sendError(res, out.status, "Falha ao chamar senha", { detail: out.text.slice(0, 500) });
+    return res.json(out.text ? JSON.parse(out.text) : null);
+  } catch (e) {
+    console.error("Erro em /api/atendimento/chamar:", e);
+    return sendError(res, 500, "Erro ao chamar senha", { detail: String(e?.message || e) });
+  }
+});
+
+app.post("/api/atendimento/finalizar", async (req, res) => {
+  try {
+    const authHeader = getBearerAuth(req);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+    const senha = normalizeSenha(req.body?.senha);
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    const out = await callSupabaseRpc({
+      supabaseUrl,
+      apikey,
+      authHeader,
+      rpcName: "finalizar_senha",
+      rpcBody: { p_senha: senha }
+    });
+    if (!out.ok) return sendError(res, out.status, "Falha ao finalizar senha", { detail: out.text.slice(0, 500) });
+    return res.json(out.text ? JSON.parse(out.text) : null);
+  } catch (e) {
+    console.error("Erro em /api/atendimento/finalizar:", e);
+    return sendError(res, 500, "Erro ao finalizar senha", { detail: String(e?.message || e) });
+  }
+});
+
+app.post("/api/atendimento/aceitar", async (req, res) => {
+  try {
+    const authHeader = getBearerAuth(req);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+    const senha = normalizeSenha(req.body?.senha);
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    const out = await callSupabaseRpc({
+      supabaseUrl,
+      apikey,
+      authHeader,
+      rpcName: "aceitar_encaminhamento",
+      rpcBody: { p_senha: senha }
+    });
+    if (!out.ok) return sendError(res, out.status, "Falha ao aceitar encaminhamento", { detail: out.text.slice(0, 500) });
+    return res.json(out.text ? JSON.parse(out.text) : null);
+  } catch (e) {
+    console.error("Erro em /api/atendimento/aceitar:", e);
+    return sendError(res, 500, "Erro ao aceitar encaminhamento", { detail: String(e?.message || e) });
+  }
+});
+
+app.post("/api/atendimento/triar", async (req, res) => {
+  try {
+    const authHeader = getBearerAuth(req);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+
+    const senha = normalizeSenha(req.body?.senha);
+    const nome = req.body?.nome != null ? String(req.body.nome).trim() : "";
+    const cpf = req.body?.cpf != null ? String(req.body.cpf).trim() : "";
+    const soc_status = req.body?.soc_status != null ? String(req.body.soc_status).trim() : "nao_verificado";
+
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+    if (!nome) return sendError(res, 400, "Campo 'nome' é obrigatório");
+    if (!cpf) return sendError(res, 400, "Campo 'cpf' é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    const out = await callSupabaseRpc({
+      supabaseUrl,
+      apikey,
+      authHeader,
+      rpcName: "triar_senha",
+      rpcBody: { p_senha: senha, p_nome: nome, p_cpf: cpf, p_soc_status: soc_status }
+    });
+    if (!out.ok) return sendError(res, out.status, "Falha ao triar senha", { detail: out.text.slice(0, 500) });
+    return res.json(out.text ? JSON.parse(out.text) : null);
+  } catch (e) {
+    console.error("Erro em /api/atendimento/triar:", e);
+    return sendError(res, 500, "Erro ao triar senha", { detail: String(e?.message || e) });
+  }
+});
+
 const db = openDb(DB_PATH);
 initDb(db);
 

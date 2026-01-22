@@ -32,13 +32,12 @@
       if (isSafari) window.__SAFE_DISABLE_REALTIME = true;
     } catch {}
 
-    window.safeSupabase = window.supabase.createClient(url, anonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    });
+    // Backend-first:
+    // O frontend não precisa manter sessão do Supabase no navegador (Safari é instável).
+    // Mantemos `window.safeSupabase = null` por padrão e usamos o backend + SAFE_ACCESS_TOKEN.
+    // (Se no futuro precisar reativar supabase-js no browser, reintroduza createClient aqui.)
+    window.safeSupabase = null;
+    return;
 
     // Safari (e alguns modos de economia de energia) podem suspender WebSockets em background,
     // gerando "WebSocket is closed due to suspension." no console.

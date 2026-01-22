@@ -14,36 +14,27 @@ async function ensureLoggedUser() {
         // segue
     }
 
-    // 2) Supabase: se existe sessão, buscar profile e persistir
-    const supa = window.safeSupabase;
-    if (!supa) return null;
-
+    // 2) Backend-first: se existe token, buscar profile no backend e persistir
     try {
-        const { data: sessionData, error: sessionErr } = await supa.auth.getSession();
-        if (sessionErr) throw sessionErr;
-        const userId = sessionData?.session?.user?.id;
-        let accessToken = sessionData?.session?.access_token || null;
-        if (!userId) return null;
-        if (!accessToken) {
-            // Safari pode retornar sessão vazia momentaneamente; tenta refresh antes de desistir.
-            if (typeof supa.auth.refreshSession === 'function') {
-                await supa.auth.refreshSession().catch(() => null);
-                const { data: sessionData2 } = await supa.auth.getSession().catch(() => ({ data: null }));
-                accessToken = sessionData2?.session?.access_token || null;
-            }
-        }
-        if (!accessToken) return null;
-
         const apiBase = window.API_CONFIG?.BASE_URL || null;
         if (!apiBase) return null;
 
-        const profRes = await fetch(
-            `${apiBase}/supa/profiles?select=id,username,nome,role&id=eq.${encodeURIComponent(userId)}`,
-            { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } }
-        );
-        if (!profRes.ok) return null;
-        const profArr = await profRes.json().catch(() => []);
-        const profile = Array.isArray(profArr) ? profArr[0] : profArr;
+        const token = (function () {
+            try {
+                return String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim() || null;
+            } catch {
+                return null;
+            }
+        })();
+        if (!token) return null;
+
+        const meRes = await fetch(`${apiBase}/auth/me`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+        });
+        if (!meRes.ok) return null;
+        const me = await meRes.json().catch(() => null);
+        const profile = me?.profile || null;
         if (!profile?.role) return null;
 
         const normalized = {
@@ -906,10 +897,14 @@ function getSOCUrl(data) {
                     try {
                         localStorage.removeItem('loggedUser');
                         localStorage.removeItem('pacienteAtendimento');
+                        localStorage.removeItem('SAFE_ACCESS_TOKEN');
                         // Mantemos preferências do usuário (userSettings) por padrão.
-                        if (window.safeSupabase) {
-                            await window.safeSupabase.auth.signOut().catch(() => {});
-                        }
+                        try {
+                            const apiBase = window.API_CONFIG?.BASE_URL || null;
+                            if (apiBase) {
+                                await fetch(`${apiBase}/auth/logout`, { method: 'POST' }).catch(() => {});
+                            }
+                        } catch {}
                     } finally {
                 window.location.href = 'login.html';
                     }
