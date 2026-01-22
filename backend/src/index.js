@@ -1040,25 +1040,31 @@ app.get("/api/soc", async (req, res) => {
 });
 
 // Painel (TV): endpoints server-side para evitar CORS no browser.
-// Não requer login: o backend usa service role para montar o feed.
-function getSupabaseServiceEnv() {
+// Ambiente atual: vocês usam ANON key.
+// - Para não abrir SELECT anônimo nas tabelas com RLS, consumimos RPCs SECURITY DEFINER (painel_*).
+// - Opcionalmente, se existir service role, também funciona (mesma interface).
+function getSupabasePainelEnv() {
   const supabaseUrl = String(process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
   const serviceKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  return { url: supabaseUrl, serviceKey };
+  const anonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+  const apikey = serviceKey || anonKey || "";
+  return { url: supabaseUrl, apikey };
 }
 
-async function supabaseServiceFetch(pathAndQuery) {
-  const { url, serviceKey } = getSupabaseServiceEnv();
-  if (!url || !serviceKey) {
-    throw new Error("Supabase não configurado (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY)");
+async function supabasePainelRpc(rpcName) {
+  const { url, apikey } = getSupabasePainelEnv();
+  if (!url || !apikey) {
+    throw new Error("Supabase não configurado para o painel (SUPABASE_URL + SUPABASE_ANON_KEY).");
   }
-  const resp = await fetch(`${url}${pathAndQuery}`, {
-    method: "GET",
+  const resp = await fetch(`${url}/rest/v1/rpc/${rpcName}`, {
+    method: "POST",
     headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
+      apikey,
+      Authorization: `Bearer ${apikey}`,
+      "Content-Type": "application/json",
       Accept: "application/json",
     },
+    body: JSON.stringify({}),
   });
   const text = await resp.text();
   if (!resp.ok) {
@@ -1072,28 +1078,24 @@ async function supabaseServiceFetch(pathAndQuery) {
 
 app.get("/api/painel/pendentes", async (_req, res) => {
   try {
-    const data = await supabaseServiceFetch(
-      "/rest/v1/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&status=eq.pendente&medico_atendendo_id=is.null&order=updated_at.desc&limit=50"
-    );
+    const data = await supabasePainelRpc("painel_pendentes");
     return res.json(Array.isArray(data) ? data : []);
   } catch (e) {
     console.error("Erro /api/painel/pendentes:", e);
     return sendError(res, 500, "Erro ao carregar painel (pendentes)", {
-      detail: String(e?.message || e),
+      detail: String(e?.body || e?.message || e),
     });
   }
 });
 
 app.get("/api/painel/em_atendimento", async (_req, res) => {
   try {
-    const data = await supabaseServiceFetch(
-      "/rest/v1/senhas?select=senha,nome,cpf,status,created_at,updated_at,called_at,medico_atendendo_id,profiles!medico_atendendo_id(nome,specialty)&status=eq.em_atendimento&medico_atendendo_id=not.is.null&order=called_at.desc&limit=10"
-    );
+    const data = await supabasePainelRpc("painel_em_atendimento");
     return res.json(Array.isArray(data) ? data : []);
   } catch (e) {
     console.error("Erro /api/painel/em_atendimento:", e);
     return sendError(res, 500, "Erro ao carregar painel (em atendimento)", {
-      detail: String(e?.message || e),
+      detail: String(e?.body || e?.message || e),
     });
   }
 });
