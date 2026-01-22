@@ -136,7 +136,14 @@
                         ? String(s.nome).replace(/ \[EM ATENDIMENTO - .+?\]$/, '')
                         : (s.cpf ? `Sem nome (CPF: ${s.cpf})` : "Sem nome")
                     }</div>
-                    <div class="senha-status text-sm text-gray-500 font-medium">${statusBadge}</div>
+                    <div class="senha-status text-sm text-gray-500 font-medium">
+                      ${statusBadge}
+                      ${
+                        s.status === "pendente"
+                          ? '<div class="text-xs text-gray-400 mt-1">Aguardando chamada no atendimento</div>'
+                          : ''
+                      }
+                    </div>
                   </div>
                 </div>
                 <div class="senha-actions flex gap-3 items-center w-full md:w-auto justify-center"></div>
@@ -158,37 +165,6 @@
                 btnCadastro.innerHTML = '<i class="fas fa-user-plus"></i> Cadastrar';
                 btnCadastro.onclick = () => abrirModalCadastro(s.senha, s.cpf);
                 actionsDiv.appendChild(btnCadastro);
-              }
-              
-              // Botão Atender só se status for pendente E nome preenchido
-              // (e não estiver em atendimento)
-              const nomeTemMarcador = / \[EM ATENDIMENTO - .+?\]$/.test(String(s.nome || ''));
-              const temMedicoAtendendo =
-                s?.medicoAtendendo != null && String(s.medicoAtendendo).trim().length > 0;
-              if (s.status === "pendente" && s.nome && s.nome !== "Sem agendamento" && !nomeTemMarcador && !temMedicoAtendendo) {
-                const btn = document.createElement("button");
-                btn.className = "btn-atender bg-gradient-to-br from-green-500 to-green-600 text-white border-none rounded-xl py-3 px-6 text-sm font-semibold cursor-pointer transition-all duration-300 shadow-lg shadow-green-500/30 whitespace-nowrap hover:-translate-y-0.5 hover:shadow-xl hover:shadow-green-500/40";
-                btn.innerHTML = '<i class="fas fa-check"></i> Atender';
-                btn.onclick = async () => {
-                  btn.disabled = true;
-                  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
-                  
-                  // Salvar dados do paciente para passar para o médico
-                  const pacienteData = {
-                    senha: s.senha,
-                    nome: s.nome,
-                    cpf: s.cpf || '',
-                    status: s.status,
-                    data: s.data || new Date().toISOString()
-                  };
-                  
-                  // Salvar no localStorage para passar para a página do médico
-                  localStorage.setItem('pacienteAtendimento', JSON.stringify(pacienteData));
-                  
-                  // Redirecionar para a página do médico
-                  window.location.href = `medico.html?senha=${encodeURIComponent(s.senha)}`;
-                };
-                actionsDiv.appendChild(btn);
               }
               
               lista.appendChild(item);
