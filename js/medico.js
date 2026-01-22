@@ -154,6 +154,22 @@
           function normalizeRoom(s) {
             return String(s || '').trim().toLowerCase();
           }
+          function normalizeEncaminhamentoValue(raw) {
+            // Em alguns schemas antigos, `encaminhamento` pode vir como texto (JSON string).
+            if (raw == null) return null;
+            if (typeof raw === 'object') return raw;
+            if (typeof raw === 'string') {
+              const txt = raw.trim();
+              if (!txt) return null;
+              try {
+                const parsed = JSON.parse(txt);
+                return parsed && typeof parsed === 'object' ? parsed : null;
+              } catch {
+                return null;
+              }
+            }
+            return null;
+          }
           function isEncaminhamentoExame(enc) {
             if (!enc) return false;
             const tipo = String(enc.tipo || '').trim().toLowerCase();
@@ -197,7 +213,7 @@
             const data = await resSenhas.json().catch(() => []);
 
             senhas = (Array.isArray(data) ? data : []).map((s) => {
-              const rawEnc = s.encaminhamento || null;
+              const rawEnc = normalizeEncaminhamentoValue(s.encaminhamento);
               const origemId = rawEnc?.medicoOrigemId || null;
               const destinoId = rawEnc?.medicoDestinoId || null;
               const enc = rawEnc
