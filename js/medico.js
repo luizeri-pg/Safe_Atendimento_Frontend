@@ -1568,6 +1568,7 @@
       }
 
       function setupRealtimeSenhas() {
+        if (window.__SAFE_DISABLE_REALTIME) return false;
         const supa = window.safeSupabase;
         if (!supa || typeof supa.channel !== 'function') return false;
         if (window.__SAFE_REALTIME_SENHAS_MEDICO_BOUND) return true;
@@ -1598,10 +1599,9 @@
       }
 
       // Polling fallback:
-      // - Sem Realtime: 3s (como antes)
-      // - Com Realtime: 10s (só para resiliência)
-      const hasRealtime = setupRealtimeSenhas();
-      startSenhasPolling(hasRealtime ? 10000 : 3000);
+      // Mantém 3s para garantir sincronização mesmo no Safari (sem WebSocket).
+      setupRealtimeSenhas();
+      startSenhasPolling(3000);
       
       // Carrega dados iniciais
       carregarFila();

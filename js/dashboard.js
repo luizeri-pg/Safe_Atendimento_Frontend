@@ -22,8 +22,16 @@ async function ensureLoggedUser() {
         const { data: sessionData, error: sessionErr } = await supa.auth.getSession();
         if (sessionErr) throw sessionErr;
         const userId = sessionData?.session?.user?.id;
-        const accessToken = sessionData?.session?.access_token || null;
+        let accessToken = sessionData?.session?.access_token || null;
         if (!userId) return null;
+        if (!accessToken) {
+            // Safari pode retornar sessão vazia momentaneamente; tenta refresh antes de desistir.
+            if (typeof supa.auth.refreshSession === 'function') {
+                await supa.auth.refreshSession().catch(() => null);
+                const { data: sessionData2 } = await supa.auth.getSession().catch(() => ({ data: null }));
+                accessToken = sessionData2?.session?.access_token || null;
+            }
+        }
         if (!accessToken) return null;
 
         const apiBase = window.API_CONFIG?.BASE_URL || null;
@@ -49,6 +57,44 @@ async function ensureLoggedUser() {
     } catch (e) {
         console.warn('Falha ao restaurar sessão do Supabase no dashboard:', e);
         return null;
+    }
+}
+
+function showAuthBanner(message) {
+    try {
+        const id = 'safe-auth-banner';
+        let el = document.getElementById(id);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = id;
+            el.style.position = 'fixed';
+            el.style.left = '12px';
+            el.style.right = '12px';
+            el.style.bottom = '12px';
+            el.style.zIndex = '99999';
+            el.style.padding = '12px 14px';
+            el.style.borderRadius = '12px';
+            el.style.background = 'rgba(17, 24, 39, 0.92)';
+            el.style.color = '#fff';
+            el.style.fontSize = '14px';
+            el.style.fontWeight = '600';
+            el.style.backdropFilter = 'blur(10px)';
+            el.style.boxShadow = '0 10px 25px rgba(0,0,0,0.25)';
+            document.body.appendChild(el);
+        }
+        el.textContent = String(message || '');
+        el.style.display = 'block';
+    } catch {
+        // ignora
+    }
+}
+
+function hideAuthBanner() {
+    try {
+        const el = document.getElementById('safe-auth-banner');
+        if (el) el.style.display = 'none';
+    } catch {
+        // ignora
     }
 }
 
@@ -1840,11 +1886,20 @@ function getSOCUrl(data) {
             }
 
             // Guard do dashboard: exige sessão e aplica UI por perfil antes de buscar dados
-            const user = await ensureLoggedUser();
+            // Evita "voltar pro login" por falhas transitórias (Safari/rede).
+            let user = null;
+            const maxAttempts = 6;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                user = await ensureLoggedUser();
+                if (user) break;
+                showAuthBanner('Validando sua sessão…');
+                await new Promise((r) => setTimeout(r, 250 + attempt * 350));
+            }
             if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
+            hideAuthBanner();
             applyRoleUI(user);
 
             loadDashboardData();

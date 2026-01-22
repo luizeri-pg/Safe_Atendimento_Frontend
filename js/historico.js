@@ -138,6 +138,7 @@
       }
 
       function setupRealtimeHistorico() {
+        if (window.__SAFE_DISABLE_REALTIME) return false;
         const supa = window.safeSupabase;
         if (!supa || typeof supa.channel !== 'function') return false;
         if (window.__SAFE_REALTIME_SENHAS_HISTORICO_BOUND) return true;
@@ -168,10 +169,9 @@
       }
 
       // Polling fallback:
-      // - Sem Realtime: 5s (como antes)
-      // - Com Realtime: 20s (só para resiliência)
-      const hasRealtime = setupRealtimeHistorico();
-      startHistoricoPolling(hasRealtime ? 20000 : 5000);
+      // Mantém 5s para reduzir carga, mas sem depender de WebSocket.
+      setupRealtimeHistorico();
+      startHistoricoPolling(5000);
       
       // Carrega dados iniciais
       carregarHistorico();

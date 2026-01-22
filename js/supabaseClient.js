@@ -24,6 +24,14 @@
   const { url, anonKey } = window.SAFE_SUPABASE_CONFIG;
 
   try {
+    // Em Safari (especialmente iOS/Low Power Mode), WebSocket pode ser suspenso e causar ruído/instabilidade.
+    // Para garantir o "básico" (login e uso contínuo), desativamos Realtime no Safari e usamos polling.
+    try {
+      const ua = String(navigator.userAgent || "");
+      const isSafari = /safari/i.test(ua) && !/chrome|crios|android/i.test(ua);
+      if (isSafari) window.__SAFE_DISABLE_REALTIME = true;
+    } catch {}
+
     window.safeSupabase = window.supabase.createClient(url, anonKey, {
       auth: {
         persistSession: true,
@@ -33,9 +41,21 @@
     });
 
     // Safari (e alguns modos de economia de energia) podem suspender WebSockets em background,
-    // gerando "WebSocket is closed due to suspension.".
-    // Quando a aba volta a ficar ativa, tentamos reconectar o Realtime para restabelecer assinaturas.
+    // gerando "WebSocket is closed due to suspension." no console.
+    // Estratégia:
+    // - Ao ocultar a aba: desconecta Realtime de forma limpa (evita "suspension")
+    // - Ao voltar/ficar online: reconecta (restabelece assinaturas)
     const supa = window.safeSupabase;
+    function disconnectRealtime(reason) {
+      try {
+        if (!supa || !supa.realtime) return;
+        if (typeof supa.realtime.disconnect === "function") {
+          supa.realtime.disconnect();
+        }
+      } catch (e) {
+        console.warn("[Realtime] Falha ao desconectar:", reason, e);
+      }
+    }
     function reconnectRealtime(reason) {
       try {
         if (!supa || !supa.realtime) return;
@@ -49,9 +69,14 @@
 
     try {
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") reconnectRealtime("visibilitychange");
+        if (document.visibilityState === "hidden") {
+          disconnectRealtime("visibilitychange:hidden");
+          return;
+        }
+        if (document.visibilityState === "visible") reconnectRealtime("visibilitychange:visible");
       });
       window.addEventListener("pageshow", () => reconnectRealtime("pageshow"));
+      window.addEventListener("pagehide", () => disconnectRealtime("pagehide"));
       window.addEventListener("online", () => reconnectRealtime("online"));
     } catch {
       // ignora
