@@ -525,6 +525,46 @@ app.post("/api/atendimento/triar", async (req, res) => {
   }
 });
 
+// Atendente: lista de senhas (backend-first, evita query grande no Safari)
+app.get("/api/atendente/senhas", async (req, res) => {
+  try {
+    const authHeader = getBearerAuth(req);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    const targetUrl =
+      `${supabaseUrl}/rest/v1/senhas` +
+      `?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id` +
+      `&status=in.(cadastro,pendente)` +
+      `&medico_atendendo_id=is.null` +
+      `&order=updated_at.desc` +
+      `&limit=200`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const upstream = await fetch(targetUrl, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { apikey, Authorization: authHeader, Accept: "application/json" }
+    }).finally(() => clearTimeout(timeoutId));
+
+    const txt = await upstream.text();
+    if (!upstream.ok) {
+      return sendError(res, upstream.status, "Falha ao carregar senhas", { detail: txt.slice(0, 500) });
+    }
+    const data = txt ? JSON.parse(txt) : [];
+    return res.json(Array.isArray(data) ? data : []);
+  } catch (e) {
+    const msg = e?.name === "AbortError" ? "Timeout ao carregar senhas" : "Erro ao carregar senhas";
+    console.error("Erro em /api/atendente/senhas:", e);
+    return sendError(res, 502, msg, { detail: String(e?.message || e) });
+  }
+});
+
 const db = openDb(DB_PATH);
 initDb(db);
 

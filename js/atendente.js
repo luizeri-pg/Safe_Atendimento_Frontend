@@ -44,13 +44,15 @@
                 return null;
               }
             })();
-            if (!token) throw new Error('Sem token de autenticação');
+            if (!token) {
+              window.location.href = 'login.html';
+              return;
+            }
 
-            const res = await fetch(
-              `${window.API_CONFIG.BASE_URL}/supa/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&status=in.(cadastro,pendente)&medico_atendendo_id=is.null&order=updated_at.desc&limit=200`,
-              { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
-            );
-            if (!res.ok) throw new Error(`Falha ao buscar senhas via proxy (${res.status})`);
+            const res = await fetch(`${window.API_CONFIG.BASE_URL}/atendente/senhas`, {
+              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+            });
+            if (!res.ok) throw new Error(`Falha ao buscar senhas (${res.status})`);
             const data = await res.json().catch(() => []);
             senhas = (Array.isArray(data) ? data : []).map((s) => ({
               senha: s.senha,
