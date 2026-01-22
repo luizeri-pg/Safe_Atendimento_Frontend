@@ -1121,13 +1121,71 @@
         const tipo = document.getElementById('tipoEncaminhamento')?.value || 'medico';
         const groupMedico = document.getElementById('groupMedicoDestino');
         const groupExame = document.getElementById('groupSalaExameDestino');
+        const salaSelect = document.getElementById('salaExameDestino');
 
-        if (tipo === 'exame') {
+        function setOptionEnabled(opt, enabled) {
+          if (!opt) return;
+          opt.disabled = !enabled;
+          opt.hidden = !enabled;
+        }
+
+        function updateSalaOptions(nextTipo) {
+          if (!salaSelect) return;
+          const options = Array.from(salaSelect.options || []);
+          const valSet = new Set(options.map((o) => o.value));
+
+          // Sempre manter o placeholder habilitado
+          options.forEach((o) => {
+            if (!o || o.value === '') {
+              setOptionEnabled(o, true);
+              return;
+            }
+            setOptionEnabled(o, true);
+          });
+
+          if (nextTipo === 'enfermagem') {
+            // Sala 1 e 2
+            options.forEach((o) => {
+              if (!o || o.value === '') return;
+              const v = String(o.value).toLowerCase();
+              const ok = v.includes('exame 1') || v.includes('exame 2');
+              setOptionEnabled(o, ok);
+            });
+            if (salaSelect.value && !['Sala de exame 1', 'Sala de exame 2'].includes(salaSelect.value)) {
+              salaSelect.value = '';
+            }
+          } else if (nextTipo === 'fono') {
+            // Sala 3
+            options.forEach((o) => {
+              if (!o || o.value === '') return;
+              const v = String(o.value).toLowerCase();
+              const ok = v.includes('exame 3');
+              setOptionEnabled(o, ok);
+            });
+            // Auto-selecionar sala 3 se existir
+            if (valSet.has('Sala de exame 3')) {
+              salaSelect.value = 'Sala de exame 3';
+            } else if (salaSelect.value && !String(salaSelect.value).toLowerCase().includes('exame 3')) {
+              salaSelect.value = '';
+            }
+          } else {
+            // medico: não usa sala (mas deixa tudo habilitado para quando trocar depois)
+            options.forEach((o) => {
+              if (!o || o.value === '') return;
+              setOptionEnabled(o, true);
+            });
+            if (salaSelect.value) salaSelect.value = '';
+          }
+        }
+
+        if (tipo !== 'medico') {
           if (groupMedico) groupMedico.style.display = 'none';
           if (groupExame) groupExame.style.display = '';
+          updateSalaOptions(tipo);
         } else {
           if (groupMedico) groupMedico.style.display = '';
           if (groupExame) groupExame.style.display = 'none';
+          updateSalaOptions('medico');
         }
       }
 
@@ -1142,6 +1200,7 @@
         const salaExameEl = document.getElementById('salaExameDestino');
         if (salaExameEl) salaExameEl.value = '';
         document.getElementById('motivoEncaminhamento').value = '';
+        atualizarTipoEncaminhamento();
       }
 
       async function confirmarEncaminhamento() {
@@ -1153,8 +1212,10 @@
         let medicoDestino = null;
         let salaDestino = null;
 
-        if (tipo === 'exame') {
+        if (tipo !== 'medico') {
           salaDestino = document.getElementById('salaExameDestino')?.value || '';
+          // Fono: se não selecionou, assume Exame 3
+          if (!salaDestino && tipo === 'fono') salaDestino = 'Sala de exame 3';
           if (!salaDestino) {
             alert('Por favor, selecione a sala de exame.');
             return;
@@ -1174,7 +1235,7 @@
           
           // Preparar dados do encaminhamento
           const encaminhamentoData = {
-            tipo: tipo,
+            tipo: tipo === 'medico' ? 'medico' : 'exame',
             medicoOrigem: medicoOrigem,
             medicoDestino: medicoDestino,
             salaDestino: salaDestino,
@@ -1184,7 +1245,7 @@
           };
           
           if (window.safeSupabase) {
-            if (tipo === 'exame') {
+            if (tipo !== 'medico') {
               const { error } = await window.safeSupabase.rpc('encaminhar_para_exame', {
                 p_senha: pacienteAtual.senha,
                 p_sala_destino: salaDestino,
