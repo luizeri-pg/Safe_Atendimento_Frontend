@@ -42,16 +42,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const data = await resp.json().catch(() => null);
         const accessToken = String(data?.access_token || '').trim();
+        const refreshToken = String(data?.refresh_token || '').trim();
         const profile = data?.profile || null;
         const role = String(profile?.role || '').trim();
 
-        if (!accessToken || !profile || !role) {
+        if (!accessToken || !refreshToken || !profile || !role) {
           showError('Resposta de login inválida. Tente novamente.');
           return;
         }
 
         // Token para chamadas ao backend-proxy (evita depender da sessão do Safari no supabase-js)
         localStorage.setItem('SAFE_ACCESS_TOKEN', accessToken);
+        localStorage.setItem('SAFE_REFRESH_TOKEN', refreshToken);
         localStorage.setItem(
           'loggedUser',
           JSON.stringify({

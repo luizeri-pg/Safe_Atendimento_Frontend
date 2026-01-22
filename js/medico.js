@@ -34,7 +34,6 @@
 
       async function getAccessToken() {
         try {
-          const supa = window.safeSupabase;
           // 1) Preferir token salvo no localStorage (login via backend)
           try {
             const stored = String(localStorage.getItem('SAFE_ACCESS_TOKEN') || '').trim();
@@ -42,6 +41,7 @@
           } catch {}
 
           // 2) Fallback: sessão do supabase-js (quando disponível)
+          const supa = window.safeSupabase;
           if (!supa) return null;
           const { data } = await supa.auth.getSession();
           const token = data?.session?.access_token || null;
@@ -57,6 +57,42 @@
         } catch {
           return null;
         }
+      }
+
+      let __safeRefreshingToken = null;
+      async function refreshAccessToken() {
+        if (__safeRefreshingToken) return __safeRefreshingToken;
+        __safeRefreshingToken = (async () => {
+          const apiBase = window.API_CONFIG?.BASE_URL || null;
+          if (!apiBase) return null;
+          const refreshToken = (function () {
+            try {
+              return String(localStorage.getItem('SAFE_REFRESH_TOKEN') || '').trim() || null;
+            } catch {
+              return null;
+            }
+          })();
+          if (!refreshToken) return null;
+
+          const res = await fetch(`${apiBase}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken })
+          }).catch(() => null);
+          if (!res || !res.ok) return null;
+          const json = await res.json().catch(() => null);
+          const nextAccess = String(json?.access_token || '').trim();
+          const nextRefresh = String(json?.refresh_token || '').trim();
+          if (!nextAccess || !nextRefresh) return null;
+          try {
+            localStorage.setItem('SAFE_ACCESS_TOKEN', nextAccess);
+            localStorage.setItem('SAFE_REFRESH_TOKEN', nextRefresh);
+          } catch {}
+          return nextAccess;
+        })().finally(() => {
+          __safeRefreshingToken = null;
+        });
+        return __safeRefreshingToken;
       }
 
       function showAuthBanner(message) {
@@ -123,7 +159,7 @@
           // segue
         }
 
-        // 2) Backend-first: se existe token, buscar perfil no backend
+        // 2) Backend-first: se existe token, buscar perfil no backend (com refresh se necessário)
         try {
           const apiBase = window.API_CONFIG?.BASE_URL || null;
           const token = await getAccessToken();
@@ -144,6 +180,29 @@
                 };
                 localStorage.setItem('loggedUser', JSON.stringify(normalized));
                 return normalized;
+              }
+            } else if (meRes.status === 401) {
+              // tenta renovar e repetir 1x
+              const next = await refreshAccessToken();
+              if (next) {
+                const me2 = await fetch(`${apiBase}/auth/me`, {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${next}`, Accept: 'application/json' }
+                });
+                if (me2.ok) {
+                  const data = await me2.json().catch(() => null);
+                  const profile = data?.profile || null;
+                  if (profile?.role) {
+                    const normalized = {
+                      id: profile.id,
+                      username: profile.username,
+                      nome: profile.nome,
+                      role: normalizeRole(profile.role),
+                    };
+                    localStorage.setItem('loggedUser', JSON.stringify(normalized));
+                    return normalized;
+                  }
+                }
               }
             }
           }

@@ -234,10 +234,12 @@ app.post("/api/auth/login", async (req, res) => {
 
     const tokenJson = JSON.parse(tokenText || "{}");
     const accessToken = String(tokenJson?.access_token || "").trim();
+    const refreshToken = String(tokenJson?.refresh_token || "").trim();
+    const expiresIn = Number(tokenJson?.expires_in || 0) || null;
     const userId = String(tokenJson?.user?.id || "").trim();
     const userEmail = String(tokenJson?.user?.email || email).trim();
 
-    if (!accessToken || !userId) {
+    if (!accessToken || !refreshToken || !userId) {
       return sendError(res, 500, "Resposta de login inválida (sem token)");
     }
 
@@ -267,12 +269,50 @@ app.post("/api/auth/login", async (req, res) => {
 
     return res.json({
       access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: expiresIn,
       user: { id: userId, email: userEmail },
       profile
     });
   } catch (e) {
     console.error("Erro em /api/auth/login:", e);
     return sendError(res, 500, "Erro ao fazer login", { detail: String(e?.message || e) });
+  }
+});
+
+app.post("/api/auth/refresh", async (req, res) => {
+  try {
+    const refreshToken = String(req.body?.refresh_token || "").trim();
+    if (!refreshToken) return sendError(res, 400, "refresh_token é obrigatório");
+
+    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
+    if (!supabaseUrl || !apikey) {
+      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
+    }
+
+    const tokenRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { apikey, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+
+    const txt = await tokenRes.text();
+    if (!tokenRes.ok) {
+      return sendError(res, tokenRes.status, "Falha ao renovar sessão", { detail: txt.slice(0, 300) });
+    }
+
+    const json = JSON.parse(txt || "{}");
+    const accessToken = String(json?.access_token || "").trim();
+    const nextRefresh = String(json?.refresh_token || "").trim();
+    const expiresIn = Number(json?.expires_in || 0) || null;
+    if (!accessToken || !nextRefresh) {
+      return sendError(res, 500, "Resposta inválida ao renovar sessão");
+    }
+
+    return res.json({ access_token: accessToken, refresh_token: nextRefresh, expires_in: expiresIn });
+  } catch (e) {
+    console.error("Erro em /api/auth/refresh:", e);
+    return sendError(res, 500, "Erro ao renovar sessão", { detail: String(e?.message || e) });
   }
 });
 

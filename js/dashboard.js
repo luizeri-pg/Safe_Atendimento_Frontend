@@ -28,10 +28,42 @@ async function ensureLoggedUser() {
         })();
         if (!token) return null;
 
-        const meRes = await fetch(`${apiBase}/auth/me`, {
+        let meRes = await fetch(`${apiBase}/auth/me`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
         });
+        if (!meRes.ok && meRes.status === 401) {
+            // tenta refresh token e repete
+            const refreshToken = (function () {
+                try {
+                    return String(localStorage.getItem('SAFE_REFRESH_TOKEN') || '').trim() || null;
+                } catch {
+                    return null;
+                }
+            })();
+            if (refreshToken) {
+                const r = await fetch(`${apiBase}/auth/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                    body: JSON.stringify({ refresh_token: refreshToken })
+                }).catch(() => null);
+                if (r && r.ok) {
+                    const j = await r.json().catch(() => null);
+                    const nextAccess = String(j?.access_token || '').trim();
+                    const nextRefresh = String(j?.refresh_token || '').trim();
+                    if (nextAccess && nextRefresh) {
+                        try {
+                            localStorage.setItem('SAFE_ACCESS_TOKEN', nextAccess);
+                            localStorage.setItem('SAFE_REFRESH_TOKEN', nextRefresh);
+                        } catch {}
+                        meRes = await fetch(`${apiBase}/auth/me`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${nextAccess}`, Accept: 'application/json' }
+                        });
+                    }
+                }
+            }
+        }
         if (!meRes.ok) return null;
         const me = await meRes.json().catch(() => null);
         const profile = me?.profile || null;
