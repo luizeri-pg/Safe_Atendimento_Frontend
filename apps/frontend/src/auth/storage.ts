@@ -13,9 +13,28 @@ const KEYS = {
   publicDisplayToken: "SAFE_PUBLIC_DISPLAY_TOKEN"
 } as const;
 
+function ss() {
+  return sessionStorage;
+}
+function ls() {
+  return localStorage;
+}
+
+// Remove qualquer sessão antiga persistida (localStorage). Usado na inicialização do app.
+export function clearLegacyPersistentSession() {
+  try {
+    ls().removeItem(KEYS.accessToken);
+    ls().removeItem(KEYS.refreshToken);
+    ls().removeItem(KEYS.expiresAt);
+    ls().removeItem(KEYS.user);
+  } catch {
+    // ignore
+  }
+}
+
 export function getAccessToken() {
   try {
-    return String(localStorage.getItem(KEYS.accessToken) || "").trim() || null;
+    return String(ss().getItem(KEYS.accessToken) || "").trim() || null;
   } catch {
     return null;
   }
@@ -23,7 +42,7 @@ export function getAccessToken() {
 
 export function getRefreshToken() {
   try {
-    return String(localStorage.getItem(KEYS.refreshToken) || "").trim() || null;
+    return String(ss().getItem(KEYS.refreshToken) || "").trim() || null;
   } catch {
     return null;
   }
@@ -31,12 +50,12 @@ export function getRefreshToken() {
 
 export function setSession(params: { accessToken: string; refreshToken: string; expiresIn?: number | null }) {
   try {
-    localStorage.setItem(KEYS.accessToken, params.accessToken);
-    localStorage.setItem(KEYS.refreshToken, params.refreshToken);
+    ss().setItem(KEYS.accessToken, params.accessToken);
+    ss().setItem(KEYS.refreshToken, params.refreshToken);
     if (params.expiresIn && params.expiresIn > 0) {
-      localStorage.setItem(KEYS.expiresAt, String(Date.now() + params.expiresIn * 1000));
+      ss().setItem(KEYS.expiresAt, String(Date.now() + params.expiresIn * 1000));
     } else {
-      localStorage.removeItem(KEYS.expiresAt);
+      ss().removeItem(KEYS.expiresAt);
     }
   } catch {
     // ignore
@@ -45,10 +64,14 @@ export function setSession(params: { accessToken: string; refreshToken: string; 
 
 export function clearSession() {
   try {
-    localStorage.removeItem(KEYS.accessToken);
-    localStorage.removeItem(KEYS.refreshToken);
-    localStorage.removeItem(KEYS.expiresAt);
-    localStorage.removeItem(KEYS.user);
+    // limpa sessão atual
+    ss().removeItem(KEYS.accessToken);
+    ss().removeItem(KEYS.refreshToken);
+    ss().removeItem(KEYS.expiresAt);
+    ss().removeItem(KEYS.user);
+
+    // e também limpa qualquer sobra persistida
+    clearLegacyPersistentSession();
   } catch {
     // ignore
   }
@@ -56,7 +79,7 @@ export function clearSession() {
 
 export function getStoredUser(): StoredUser | null {
   try {
-    const raw = localStorage.getItem(KEYS.user);
+    const raw = ss().getItem(KEYS.user);
     if (!raw) return null;
     const json = JSON.parse(raw);
     const role = String(json?.role || "").trim().toLowerCase();
@@ -74,7 +97,7 @@ export function getStoredUser(): StoredUser | null {
 
 export function setStoredUser(user: StoredUser) {
   try {
-    localStorage.setItem(KEYS.user, JSON.stringify({ ...user, role: String(user.role || "").trim().toLowerCase() }));
+    ss().setItem(KEYS.user, JSON.stringify({ ...user, role: String(user.role || "").trim().toLowerCase() }));
   } catch {
     // ignore
   }
@@ -82,7 +105,7 @@ export function setStoredUser(user: StoredUser) {
 
 export function getPublicDisplayToken() {
   try {
-    return String(localStorage.getItem(KEYS.publicDisplayToken) || "").trim() || null;
+    return String(ls().getItem(KEYS.publicDisplayToken) || "").trim() || null;
   } catch {
     return null;
   }
