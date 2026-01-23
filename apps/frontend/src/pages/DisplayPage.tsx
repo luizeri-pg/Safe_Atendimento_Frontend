@@ -22,15 +22,6 @@ export default function DisplayPage() {
 
   // Painel público: sem login
   const { socket, status: socketStatus, lastError } = useSocket({ publicDisplay: true });
-  const [soundMode, setSoundMode] = useState<"campainha" | "forte" | "medio" | "clinico">(() => {
-    try {
-      const v = String(localStorage.getItem("SAFE_DISPLAY_SOUND_MODE") || "").trim();
-      if (v === "campainha" || v === "forte" || v === "medio" || v === "clinico") return v;
-      return "campainha";
-    } catch {
-      return "campainha";
-    }
-  });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem("SAFE_DISPLAY_SOUND") === "1";
@@ -201,113 +192,9 @@ export default function DisplayPage() {
     setTimeout(() => out.cleanup(), Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
   }
 
-  function playMediumAlert(ctx: AudioContext) {
-    const now = ctx.currentTime;
-    const out = withOutputChain(ctx);
-
-    const makePing = (startAt: number, freq: number, dur: number, vol: number) => {
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.connect(out.destination);
-
-      const osc = ctx.createOscillator();
-      osc.type = "square";
-      osc.frequency.setValueAtTime(freq, startAt);
-      osc.connect(gain);
-
-      gain.gain.exponentialRampToValueAtTime(vol, startAt + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-
-      osc.start(startAt);
-      osc.stop(startAt + dur + 0.02);
-
-      osc.onended = () => {
-        try {
-          osc.disconnect();
-          gain.disconnect();
-        } catch {
-          // ignore
-        }
-      };
-    };
-
-    // "BI-BI" mais evidente (médio)
-    makePing(now, 1100, 0.13, 0.35);
-    makePing(now + 0.20, 1100, 0.13, 0.35);
-
-    const endAt = now + 0.45;
-    setTimeout(() => out.cleanup(), Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
-  }
-
-  function playStrongAlert(ctx: AudioContext) {
-    const now = ctx.currentTime;
-    const out = withOutputChain(ctx);
-
-    // "ALARME" chamativo: 3 bips curtos + burst leve de ruído (tipo atenção).
-    const makeBeep = (startAt: number, freq: number, dur: number) => {
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.connect(out.destination);
-
-      const osc = ctx.createOscillator();
-      osc.type = "square";
-      osc.frequency.setValueAtTime(freq, startAt);
-      osc.connect(gain);
-
-      gain.gain.exponentialRampToValueAtTime(0.55, startAt + 0.005);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-
-      osc.start(startAt);
-      osc.stop(startAt + dur + 0.02);
-
-      osc.onended = () => {
-        try {
-          osc.disconnect();
-          gain.disconnect();
-        } catch {
-          // ignore
-        }
-      };
-    };
-
-    const freqs = [1200, 950, 1200];
-    const starts = [now, now + 0.18, now + 0.36];
-    for (let i = 0; i < 3; i++) makeBeep(starts[i]!, freqs[i]!, 0.12);
-
-    // Ruído curtíssimo para chamar atenção (bem controlado pelo compressor)
-    const noiseDur = 0.08;
-    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * noiseDur), ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.35;
-
-    const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.0001, now + 0.01);
-    noiseGain.gain.exponentialRampToValueAtTime(0.20, now + 0.02);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.02 + noiseDur);
-    noise.connect(noiseGain);
-    noiseGain.connect(out.destination);
-    noise.start(now + 0.01);
-    noise.stop(now + 0.01 + noiseDur + 0.02);
-    noise.onended = () => {
-      try {
-        noise.disconnect();
-        noiseGain.disconnect();
-      } catch {
-        // ignore
-      }
-    };
-
-    const endAt = now + 0.60;
-    setTimeout(() => out.cleanup(), Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
-  }
-
   function playNotification(ctx: AudioContext) {
-    if (soundMode === "campainha") return playDoorbell(ctx);
-    if (soundMode === "forte") return playStrongAlert(ctx);
-    if (soundMode === "medio") return playMediumAlert(ctx);
-    return playClinicChime(ctx);
+    // Mantemos apenas a campainha (mais chamativa).
+    return playDoorbell(ctx);
   }
 
   function beepTwice() {
@@ -359,15 +246,6 @@ export default function DisplayPage() {
     setSoundStatus("off");
     try {
       localStorage.removeItem("SAFE_DISPLAY_SOUND");
-    } catch {
-      // ignore
-    }
-  }
-
-  function saveSoundMode(next: "campainha" | "forte" | "medio" | "clinico") {
-    setSoundMode(next);
-    try {
-      localStorage.setItem("SAFE_DISPLAY_SOUND_MODE", next);
     } catch {
       // ignore
     }
@@ -428,14 +306,12 @@ export default function DisplayPage() {
 
   useEffect(() => {
     const onQueue = () => load().catch(() => null);
-    const onQueueEvent = () => {
-      beepTwice();
-      onQueue();
-    };
     const onAnn = (payload: any) => {
       const senha = String(payload?.senha || "").trim();
       if (!senha) return;
-      beepTwice();
+      // Som só para chamar/encaminhar (não tocar em finalizar/triagem/etc).
+      const reason = String(payload?.reason || "").trim().toLowerCase();
+      if (reason === "called" || reason === "referred") beepTwice();
       setHighlight({
         senha,
         nome: payload?.nome ?? null,
@@ -445,10 +321,10 @@ export default function DisplayPage() {
       setTimeout(() => setHighlight(null), 8000);
       load().catch(() => null);
     };
-    socket.on("queue_update", onQueueEvent);
+    socket.on("queue_update", onQueue);
     socket.on("public_announcement", onAnn);
     return () => {
-      socket.off("queue_update", onQueueEvent);
+      socket.off("queue_update", onQueue);
       socket.off("public_announcement", onAnn);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -483,17 +359,6 @@ export default function DisplayPage() {
             <i className={soundEnabled ? "fas fa-volume-up mr-2" : "fas fa-volume-mute mr-2"} />
             {soundEnabled ? "Som: ON" : "Som: OFF"}
           </button>
-          <select
-            className="bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 transition text-white text-sm outline-none"
-            value={soundMode}
-            onChange={(e) => saveSoundMode(e.target.value as any)}
-            title="Tipo de som"
-          >
-            <option value="campainha">Campainha</option>
-            <option value="forte">Alerta forte</option>
-            <option value="medio">Alerta médio</option>
-            <option value="clinico">Clínico</option>
-          </select>
           <button className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition" onClick={testSound} title="Testar som">
             <i className="fas fa-bell mr-2" />
             Testar
