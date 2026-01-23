@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
-import { setSession, setStoredUser } from "../auth/storage";
+import { getStoredUser, setSession, setStoredUser } from "../auth/storage";
 
 type LoginResponse = {
   access_token: string;
@@ -16,6 +16,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Se o usuário já está logado e caiu em /login (ex.: apertou "voltar"),
+  // redireciona para o dashboard.
+  useEffect(() => {
+    const u = getStoredUser();
+    const role = String(u?.role || "").trim().toLowerCase();
+    if (role) nav("/dashboard", { replace: true });
+  }, [nav]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
