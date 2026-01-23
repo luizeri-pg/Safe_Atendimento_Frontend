@@ -299,7 +299,33 @@ async function resolveCallerProfile(authHeader: string) {
   if (!userId) return null;
   const profOut = await supabaseFetchProfile({ accessToken: token, userId });
   if (!profOut.ok) return null;
-  return profOut.profile;
+  return { userId, profile: profOut.profile };
+}
+
+async function hasActiveAttendance(profileId: string): Promise<boolean> {
+  const { url, apikey } = getSupabaseServerEnv();
+  if (!url || !apikey) return false;
+  const targetUrl =
+    `${url}/rest/v1/senhas` +
+    `?select=senha` +
+    `&status=eq.em_atendimento` +
+    `&medico_atendendo_id=eq.${encodeURIComponent(profileId)}` +
+    `&limit=1`;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const resp = await fetch(targetUrl, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { apikey, Authorization: `Bearer ${apikey}`, Accept: "application/json" }
+    }).finally(() => clearTimeout(timeoutId));
+    const text = await resp.text();
+    if (!resp.ok) return false;
+    const arr = JSON.parse(text || "[]");
+    return Array.isArray(arr) && arr.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeRoom(s: unknown) {
@@ -751,15 +777,35 @@ app.post("/api/atendimento/chamar", async (req, res) => {
     const senha = normalizeSenha((req as any).body?.senha);
     if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
 
+    const caller = await resolveCallerProfile(authHeader);
+    const callerRole = String(caller?.profile?.role || "").trim().toLowerCase();
+    const callerId = String(caller?.userId || "").trim();
+    if (!callerId) return sendError(res, 403, "Perfil não encontrado (tabela profiles)");
+
+    // Regra pedida:
+    // - médico/fono: só pode ter 1 senha em atendimento por vez
+    // - enfermagem: pode chamar mais de 1 por vez
+    if (callerRole === "medico" || callerRole === "fono") {
+      const hasActive = await hasActiveAttendance(callerId);
+      if (hasActive) {
+        return sendError(res, 409, "Você já tem um atendimento em andamento. Finalize/encaminhe antes de chamar outro.");
+      }
+    }
+
     const out = await callSupabaseRpc({ rpcName: "chamar_senha", rpcBody: { p_senha: senha }, authHeader });
-    if (!out.ok) return sendError(res, out.status, "Falha ao chamar senha", { detail: out.text.slice(0, 500) });
+    if (!out.ok) {
+      // Se o RPC também bloquear (regra aplicada no banco), devolvemos uma msg amigável.
+      if (/already_in_attendance/i.test(out.text || "")) {
+        return sendError(res, 409, "Você já tem um atendimento em andamento. Finalize/encaminhe antes de chamar outro.");
+      }
+      return sendError(res, out.status, "Falha ao chamar senha", { detail: out.text.slice(0, 500) });
+    }
     const row = out.text ? JSON.parse(out.text) : null;
 
     emitQueueUpdate("called", senha);
     // Sala anunciada segue o perfil (consultório/exames) e/ou o encaminhamento.
-    const profile = await resolveCallerProfile(authHeader);
     const sala = inferSalaForAnnouncement({
-      callerRole: String(profile?.role || ""),
+      callerRole,
       enc: row?.encaminhamento || null
     });
     emitPublicAnnouncement(senha, row?.nome || null, sala, "called");

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { useSocket } from "../socket/useSocket";
@@ -22,6 +22,118 @@ export default function DisplayPage() {
 
   // Painel público: sem login
   const { socket, status: socketStatus, lastError } = useSocket({ publicDisplay: true });
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("SAFE_DISPLAY_SOUND") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [soundStatus, setSoundStatus] = useState<"off" | "ready" | "blocked">("off");
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const lastBeepAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    return () => {
+      const ctx = audioCtxRef.current;
+      audioCtxRef.current = null;
+      if (ctx && typeof ctx.close === "function") {
+        try {
+          void ctx.close();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
+  function getOrCreateAudioContext() {
+    if (typeof window === "undefined") return null;
+    const Ctx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext | undefined;
+    if (!Ctx) return null;
+    if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+    return audioCtxRef.current;
+  }
+
+  function beepTwice() {
+    if (!soundEnabled) return;
+    // Evita bip duplicado quando vários eventos chegam juntos (ex.: queue_update + public_announcement).
+    const nowMs = Date.now();
+    if (nowMs - lastBeepAtRef.current < 700) return;
+    lastBeepAtRef.current = nowMs;
+
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return;
+    if (ctx.state !== "running") {
+      setSoundStatus("blocked");
+      return;
+    }
+
+    const now = ctx.currentTime;
+    const toneHz = 880;
+    const beepDur = 0.11;
+    const gap = 0.11;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.connect(ctx.destination);
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(toneHz, now);
+    osc.connect(gain);
+
+    // beep 1
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.15, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + beepDur);
+
+    // beep 2
+    const t2 = now + beepDur + gap;
+    gain.gain.setValueAtTime(0.0001, t2);
+    gain.gain.exponentialRampToValueAtTime(0.15, t2 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t2 + beepDur);
+
+    osc.start(now);
+    osc.stop(t2 + beepDur + 0.02);
+
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {
+        // ignore
+      }
+    };
+  }
+
+  async function enableSound() {
+    try {
+      const ctx = getOrCreateAudioContext();
+      if (!ctx) return;
+      if (ctx.state !== "running") await ctx.resume();
+      setSoundEnabled(true);
+      setSoundStatus(ctx.state === "running" ? "ready" : "blocked");
+      try {
+        localStorage.setItem("SAFE_DISPLAY_SOUND", "1");
+      } catch {
+        // ignore
+      }
+    } catch {
+      setSoundStatus("blocked");
+    }
+  }
+
+  function disableSound() {
+    setSoundEnabled(false);
+    setSoundStatus("off");
+    try {
+      localStorage.removeItem("SAFE_DISPLAY_SOUND");
+    } catch {
+      // ignore
+    }
+  }
+
   const [pendentes, setPendentes] = useState<PainelRow[]>([]);
   const [emAtendimento, setEmAtendimento] = useState<PainelRow[]>([]);
   const [highlight, setHighlight] = useState<{
@@ -48,10 +160,21 @@ export default function DisplayPage() {
   }, []);
 
   useEffect(() => {
+    if (!soundEnabled) {
+      setSoundStatus("off");
+      return;
+    }
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return;
+    setSoundStatus(ctx.state === "running" ? "ready" : "blocked");
+  }, [soundEnabled]);
+
+  useEffect(() => {
     const onQueue = () => load().catch(() => null);
     const onAnn = (payload: any) => {
       const senha = String(payload?.senha || "").trim();
       if (!senha) return;
+      beepTwice();
       setHighlight({
         senha,
         nome: payload?.nome ?? null,
@@ -61,7 +184,10 @@ export default function DisplayPage() {
       setTimeout(() => setHighlight(null), 8000);
       load().catch(() => null);
     };
-    socket.on("queue_update", onQueue);
+    socket.on("queue_update", () => {
+      beepTwice();
+      onQueue();
+    });
     socket.on("public_announcement", onAnn);
     return () => {
       socket.off("queue_update", onQueue);
@@ -91,6 +217,14 @@ export default function DisplayPage() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-xs opacity-90">{socketStatus}</span>
+          <button
+            className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition"
+            onClick={() => (soundEnabled ? disableSound() : enableSound())}
+            title={soundEnabled ? "Desativar som" : "Ativar som"}
+          >
+            <i className={soundEnabled ? "fas fa-volume-up mr-2" : "fas fa-volume-mute mr-2"} />
+            {soundEnabled ? "Som: ON" : "Som: OFF"}
+          </button>
           <button className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition" onClick={() => load()}>
             <i className="fas fa-sync-alt mr-2" />
             Atualizar
@@ -101,6 +235,16 @@ export default function DisplayPage() {
       <div className="flex-1 flex items-start justify-center py-10 px-5 relative z-10">
         <div className="w-full max-w-[1400px]">
           {lastError ? <div className="mb-4 bg-red-100 text-red-800 py-3 px-4 rounded-lg text-sm">{lastError}</div> : null}
+          {soundEnabled && soundStatus === "blocked" ? (
+            <div className="mb-4 bg-yellow-100 text-yellow-900 py-3 px-4 rounded-lg text-sm flex items-center justify-between gap-3">
+              <div>
+                Som ativado, mas o navegador bloqueou o áudio automático. Clique em <strong>Ativar som</strong> para liberar.
+              </div>
+              <button className="bg-yellow-900/10 hover:bg-yellow-900/20 rounded-xl px-4 py-2 transition" onClick={enableSound}>
+                Ativar som
+              </button>
+            </div>
+          ) : null}
 
           {highlight ? (
             <div className="mb-6 rounded-3xl p-8 text-center shadow-2xl"

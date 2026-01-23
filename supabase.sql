@@ -236,6 +236,21 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
+  -- Regra pedida:
+  -- - médico/fono: só pode ter 1 senha em atendimento por vez
+  -- - enfermagem: pode chamar mais de 1 por vez
+  if v_role in ('medico','fono') then
+    if exists (
+      select 1
+        from public.senhas s2
+       where s2.status = 'em_atendimento'
+         and s2.medico_atendendo_id = v_profile_id
+       limit 1
+    ) then
+      raise exception 'already_in_attendance' using errcode = '23505';
+    end if;
+  end if;
+
   update public.senhas s
      set status = 'em_atendimento',
          medico_atendendo_id = v_profile_id,

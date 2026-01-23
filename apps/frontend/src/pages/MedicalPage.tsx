@@ -41,6 +41,7 @@ export default function MedicalPage() {
     role,
     socketStatus
   ]);
+  const hasMyActiveAttendance = useMemo(() => rows.some((r) => r.status === "em_atendimento"), [rows]);
 
   function normalizeRoom(s: unknown) {
     return String(s || "").trim().toLowerCase();
@@ -328,6 +329,10 @@ export default function MedicalPage() {
                   if (r.status !== "pendente") {
                     canCall = false;
                     canCallReason = "Não está pendente";
+                  } else if ((role === "medico" || role === "fono") && hasMyActiveAttendance) {
+                    // Regra pedida: médico/fono só pode chamar 1 por vez.
+                    canCall = false;
+                    canCallReason = "Finalize/encaminhe o atendimento atual antes de chamar outro";
                   } else if (taken) {
                     canCall = false;
                     canCallReason = "Já foi chamado";
