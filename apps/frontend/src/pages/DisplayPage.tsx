@@ -22,6 +22,15 @@ export default function DisplayPage() {
 
   // Painel público: sem login
   const { socket, status: socketStatus, lastError } = useSocket({ publicDisplay: true });
+  const [soundMode, setSoundMode] = useState<"forte" | "medio" | "clinico">(() => {
+    try {
+      const v = String(localStorage.getItem("SAFE_DISPLAY_SOUND_MODE") || "").trim();
+      if (v === "forte" || v === "medio" || v === "clinico") return v;
+      return "forte";
+    } catch {
+      return "forte";
+    }
+  });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem("SAFE_DISPLAY_SOUND") === "1";
@@ -55,6 +64,26 @@ export default function DisplayPage() {
     return audioCtxRef.current;
   }
 
+  function withOutputChain(ctx: AudioContext) {
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-20, ctx.currentTime);
+    compressor.knee.setValueAtTime(20, ctx.currentTime);
+    compressor.ratio.setValueAtTime(6, ctx.currentTime);
+    compressor.attack.setValueAtTime(0.003, ctx.currentTime);
+    compressor.release.setValueAtTime(0.12, ctx.currentTime);
+    compressor.connect(ctx.destination);
+    return {
+      destination: compressor,
+      cleanup: () => {
+        try {
+          compressor.disconnect();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }
+
   function playClinicChime(ctx: AudioContext) {
     const now = ctx.currentTime;
     const note1Hz = 880; // "ding"
@@ -63,12 +92,13 @@ export default function DisplayPage() {
     const gap = 0.06;
     const note2Dur = 0.20;
 
+    const out = withOutputChain(ctx);
     // Suaviza o timbre para ficar mais “painel”.
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
     filter.frequency.setValueAtTime(2400, now);
     filter.Q.setValueAtTime(0.7, now);
-    filter.connect(ctx.destination);
+    filter.connect(out.destination);
 
     const makeNote = (startAt: number, freq: number, dur: number) => {
       const gain = ctx.createGain();
@@ -105,10 +135,119 @@ export default function DisplayPage() {
     setTimeout(() => {
       try {
         filter.disconnect();
+        out.cleanup();
       } catch {
         // ignore
       }
     }, Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
+  }
+
+  function playMediumAlert(ctx: AudioContext) {
+    const now = ctx.currentTime;
+    const out = withOutputChain(ctx);
+
+    const makePing = (startAt: number, freq: number, dur: number, vol: number) => {
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.connect(out.destination);
+
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(freq, startAt);
+      osc.connect(gain);
+
+      gain.gain.exponentialRampToValueAtTime(vol, startAt + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+
+      osc.start(startAt);
+      osc.stop(startAt + dur + 0.02);
+
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // ignore
+        }
+      };
+    };
+
+    // "BI-BI" mais evidente (médio)
+    makePing(now, 1100, 0.13, 0.35);
+    makePing(now + 0.20, 1100, 0.13, 0.35);
+
+    const endAt = now + 0.45;
+    setTimeout(() => out.cleanup(), Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
+  }
+
+  function playStrongAlert(ctx: AudioContext) {
+    const now = ctx.currentTime;
+    const out = withOutputChain(ctx);
+
+    // "ALARME" chamativo: 3 bips curtos + burst leve de ruído (tipo atenção).
+    const makeBeep = (startAt: number, freq: number, dur: number) => {
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.connect(out.destination);
+
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(freq, startAt);
+      osc.connect(gain);
+
+      gain.gain.exponentialRampToValueAtTime(0.55, startAt + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+
+      osc.start(startAt);
+      osc.stop(startAt + dur + 0.02);
+
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // ignore
+        }
+      };
+    };
+
+    const freqs = [1200, 950, 1200];
+    const starts = [now, now + 0.18, now + 0.36];
+    for (let i = 0; i < 3; i++) makeBeep(starts[i]!, freqs[i]!, 0.12);
+
+    // Ruído curtíssimo para chamar atenção (bem controlado pelo compressor)
+    const noiseDur = 0.08;
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * noiseDur), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.35;
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, now + 0.01);
+    noiseGain.gain.exponentialRampToValueAtTime(0.20, now + 0.02);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.02 + noiseDur);
+    noise.connect(noiseGain);
+    noiseGain.connect(out.destination);
+    noise.start(now + 0.01);
+    noise.stop(now + 0.01 + noiseDur + 0.02);
+    noise.onended = () => {
+      try {
+        noise.disconnect();
+        noiseGain.disconnect();
+      } catch {
+        // ignore
+      }
+    };
+
+    const endAt = now + 0.60;
+    setTimeout(() => out.cleanup(), Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
+  }
+
+  function playNotification(ctx: AudioContext) {
+    if (soundMode === "forte") return playStrongAlert(ctx);
+    if (soundMode === "medio") return playMediumAlert(ctx);
+    return playClinicChime(ctx);
   }
 
   function beepTwice() {
@@ -128,14 +267,14 @@ export default function DisplayPage() {
         .then(() => {
           if (ctx.state === "running") {
             setSoundStatus("ready");
-            playClinicChime(ctx);
+            playNotification(ctx);
           }
         })
         .catch(() => null);
       return;
     }
 
-    playClinicChime(ctx);
+    playNotification(ctx);
   }
 
   async function enableSound() {
@@ -162,6 +301,33 @@ export default function DisplayPage() {
       localStorage.removeItem("SAFE_DISPLAY_SOUND");
     } catch {
       // ignore
+    }
+  }
+
+  function saveSoundMode(next: "forte" | "medio" | "clinico") {
+    setSoundMode(next);
+    try {
+      localStorage.setItem("SAFE_DISPLAY_SOUND_MODE", next);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function testSound() {
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return;
+    try {
+      if (ctx.state !== "running") await ctx.resume();
+      setSoundEnabled(true);
+      setSoundStatus(ctx.state === "running" ? "ready" : "blocked");
+      try {
+        localStorage.setItem("SAFE_DISPLAY_SOUND", "1");
+      } catch {
+        // ignore
+      }
+      if (ctx.state === "running") playNotification(ctx);
+    } catch {
+      setSoundStatus("blocked");
     }
   }
 
@@ -256,6 +422,20 @@ export default function DisplayPage() {
           >
             <i className={soundEnabled ? "fas fa-volume-up mr-2" : "fas fa-volume-mute mr-2"} />
             {soundEnabled ? "Som: ON" : "Som: OFF"}
+          </button>
+          <select
+            className="bg-white/10 hover:bg-white/20 rounded-xl px-3 py-2 transition text-white text-sm outline-none"
+            value={soundMode}
+            onChange={(e) => saveSoundMode(e.target.value as any)}
+            title="Tipo de som"
+          >
+            <option value="forte">Alerta forte</option>
+            <option value="medio">Alerta médio</option>
+            <option value="clinico">Clínico</option>
+          </select>
+          <button className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition" onClick={testSound} title="Testar som">
+            <i className="fas fa-bell mr-2" />
+            Testar
           </button>
           <button className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition" onClick={() => load()}>
             <i className="fas fa-sync-alt mr-2" />
