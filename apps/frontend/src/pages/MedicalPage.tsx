@@ -163,10 +163,22 @@ export default function MedicalPage() {
     const enc = normalizeEncaminhamento(row?.encaminhamento);
     const salaDestino = enc?.salaDestino != null ? String(enc.salaDestino) : "";
     const salaNorm = normalizeRoom(salaDestino);
-    const inferredSala =
-      salaNorm.includes("exame 3") ? "Sala de exame 3" : salaNorm.includes("exame 2") ? "Sala de exame 2" : salaNorm.includes("exame 1") ? "Sala de exame 1" : "";
+    const inferredSala = salaNorm.includes("exame 3")
+      ? "Sala de exame 3"
+      : salaNorm.includes("exame 2")
+        ? "Sala de exame 2"
+        : salaNorm.includes("exame 1")
+          ? "Sala de exame 1"
+          : "";
     setSalaExame(role === "fono" ? "Sala de exame 3" : inferredSala);
-    setEncTipo("medico");
+    if (role === "enfermagem") {
+      // Exames 3 é sempre Fono
+      if (salaNorm.includes("exame 3")) setEncTipo("fono");
+      else if (salaNorm.includes("exame 1") || salaNorm.includes("exame 2")) setEncTipo("exame");
+      else setEncTipo("medico");
+    } else {
+      setEncTipo("medico");
+    }
     loadDoctors();
     setEncOpen(true);
   }
@@ -180,9 +192,12 @@ export default function MedicalPage() {
     // - enfermagem: pode encaminhar para médico/fono OU para sala de exame 3
     // - fono: encaminha de volta para médico (consulta)
     if (role !== "medico") {
-      if (role === "enfermagem" && encTipo === "exame") {
-        // enfermagem: pode encaminhar entre salas de exame (1/2/3)
-        const sala = salaExame || "Sala de exame 2";
+      if (role === "enfermagem" && (encTipo === "exame" || encTipo === "fono")) {
+        // enfermagem:
+        // - Exames (1/2) fica na enfermagem
+        // - Exames 3 é sempre Fono
+        const sala =
+          encTipo === "fono" ? "Sala de exame 3" : salaExame || "Sala de exame 2";
         await apiFetch("/atendimento/encaminhar", {
           method: "POST",
           body: JSON.stringify({ senha: encSenha, tipo: "exame", salaDestino: sala, motivo: encMotivo || null })
@@ -446,11 +461,17 @@ export default function MedicalPage() {
                   </label>
                   <select
                     className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
-                    value={encTipo === "exame" ? "exame" : "medico"}
-                    onChange={(e) => setEncTipo(e.target.value as any)}
+                    value={encTipo}
+                    onChange={(e) => {
+                      const v = e.target.value as any;
+                      setEncTipo(v);
+                      if (v === "fono") setSalaExame("Sala de exame 3");
+                      if (v === "exame" && !salaExame) setSalaExame("Sala de exame 1");
+                    }}
                   >
                     <option value="medico">Médico / Fono</option>
-                    <option value="exame">Exames (Sala 1/2/3)</option>
+                    <option value="exame">Enfermagem (Exames 1 e 2)</option>
+                    <option value="fono">Fono (Exames 3)</option>
                   </select>
                   <div className="mt-2 text-xs text-gray-600">
                     Você está em <strong>{localLabel}</strong>.
@@ -486,7 +507,7 @@ export default function MedicalPage() {
               ) : null}
 
               {/* Sala de exame (quando encaminha para exames) */}
-              {(role === "medico" && encTipo !== "medico") || (role === "enfermagem" && encTipo === "exame") ? (
+              {(role === "medico" && encTipo !== "medico") || (role === "enfermagem" && (encTipo === "exame" || encTipo === "fono")) ? (
                 <div className="mb-5">
                   <label className="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
                     <i className="fas fa-vials text-blue-500 w-4" /> Sala de Exame
@@ -507,7 +528,6 @@ export default function MedicalPage() {
                       <option value="">Selecione</option>
                       <option value="Sala de exame 1">Sala de exame 1</option>
                       <option value="Sala de exame 2">Sala de exame 2</option>
-                      <option value="Sala de exame 3">Sala de exame 3</option>
                     </select>
                   ) : (
                     <select
