@@ -55,43 +55,30 @@ export default function DisplayPage() {
     return audioCtxRef.current;
   }
 
-  function beepTwice() {
-    if (!soundEnabled) return;
-    // Evita bip duplicado quando vários eventos chegam juntos (ex.: queue_update + public_announcement).
-    const nowMs = Date.now();
-    if (nowMs - lastBeepAtRef.current < 700) return;
-    lastBeepAtRef.current = nowMs;
-
-    const ctx = getOrCreateAudioContext();
-    if (!ctx) return;
-    if (ctx.state !== "running") {
-      setSoundStatus("blocked");
-      return;
-    }
-
+  function playBeepTwice(ctx: AudioContext) {
     const now = ctx.currentTime;
-    const toneHz = 880;
-    const beepDur = 0.11;
-    const gap = 0.11;
+    const toneHz = 1040;
+    const beepDur = 0.12;
+    const gap = 0.12;
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, now);
     gain.connect(ctx.destination);
 
     const osc = ctx.createOscillator();
-    osc.type = "sine";
+    osc.type = "square";
     osc.frequency.setValueAtTime(toneHz, now);
     osc.connect(gain);
 
     // beep 1
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.15, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.35, now + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + beepDur);
 
     // beep 2
     const t2 = now + beepDur + gap;
     gain.gain.setValueAtTime(0.0001, t2);
-    gain.gain.exponentialRampToValueAtTime(0.15, t2 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.35, t2 + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, t2 + beepDur);
 
     osc.start(now);
@@ -105,6 +92,33 @@ export default function DisplayPage() {
         // ignore
       }
     };
+  }
+
+  function beepTwice() {
+    if (!soundEnabled) return;
+    // Evita bip duplicado quando vários eventos chegam juntos (ex.: queue_update + public_announcement).
+    const nowMs = Date.now();
+    if (nowMs - lastBeepAtRef.current < 700) return;
+    lastBeepAtRef.current = nowMs;
+
+    const ctx = getOrCreateAudioContext();
+    if (!ctx) return;
+    if (ctx.state !== "running") {
+      setSoundStatus("blocked");
+      // Tenta resumir (em alguns browsers funciona após o primeiro clique).
+      void ctx
+        .resume()
+        .then(() => {
+          if (ctx.state === "running") {
+            setSoundStatus("ready");
+            playBeepTwice(ctx);
+          }
+        })
+        .catch(() => null);
+      return;
+    }
+
+    playBeepTwice(ctx);
   }
 
   async function enableSound() {
@@ -171,6 +185,10 @@ export default function DisplayPage() {
 
   useEffect(() => {
     const onQueue = () => load().catch(() => null);
+    const onQueueEvent = () => {
+      beepTwice();
+      onQueue();
+    };
     const onAnn = (payload: any) => {
       const senha = String(payload?.senha || "").trim();
       if (!senha) return;
@@ -184,13 +202,10 @@ export default function DisplayPage() {
       setTimeout(() => setHighlight(null), 8000);
       load().catch(() => null);
     };
-    socket.on("queue_update", () => {
-      beepTwice();
-      onQueue();
-    });
+    socket.on("queue_update", onQueueEvent);
     socket.on("public_announcement", onAnn);
     return () => {
-      socket.off("queue_update", onQueue);
+      socket.off("queue_update", onQueueEvent);
       socket.off("public_announcement", onAnn);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
