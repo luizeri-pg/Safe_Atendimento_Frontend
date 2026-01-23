@@ -131,17 +131,21 @@ export default function MedicalPage() {
   // Encaminhamento (modal)
   const [encOpen, setEncOpen] = useState(false);
   const [encSenha, setEncSenha] = useState<string>("");
-  const [encTipo, setEncTipo] = useState<"medico" | "enfermagem" | "fono">("medico");
+  const [encTipo, setEncTipo] = useState<"medico" | "enfermagem" | "fono" | "exame">("medico");
   const [encMotivo, setEncMotivo] = useState<string>("");
-  const [doctors, setDoctors] = useState<DoctorProfile[]>([]);
+  const [doctors, setDoctors] = useState<(DoctorProfile & { role?: string | null })[]>([]);
   const [doctorId, setDoctorId] = useState<string>("");
   const [salaExame, setSalaExame] = useState<string>("");
 
   async function loadDoctors() {
     try {
-      const data = await apiFetch<DoctorProfile[]>(`/supa/profiles?select=id,nome,specialty&role=eq.medico&order=nome.asc`, {
+      // Médicos + Fono também são destinos válidos para encaminhar (tipo "medico" no backend)
+      const data = await apiFetch<(DoctorProfile & { role?: string | null })[]>(
+        `/supa/profiles?select=id,nome,role,specialty&role=in.(medico,fono)&order=nome.asc`,
+        {
         method: "GET"
-      });
+        }
+      );
       const list = Array.isArray(data) ? data : [];
       // remover eu mesmo
       setDoctors(myId ? list.filter((d) => String(d.id) !== String(myId)) : list);
@@ -166,14 +170,23 @@ export default function MedicalPage() {
 
     // regras do fluxo:
     // - médico: pode encaminhar para outro médico OU para enfermagem/fono (como exame)
-    // - enfermagem/fono: encaminha de volta para médico (consulta)
+    // - enfermagem: pode encaminhar para médico/fono OU para sala de exame 3
+    // - fono: encaminha de volta para médico (consulta)
     if (role !== "medico") {
-      // enfermagem/fono: sempre para médico
-      if (!doctorId) return;
-      await apiFetch("/atendimento/encaminhar", {
-        method: "POST",
-        body: JSON.stringify({ senha: encSenha, tipo: "medico", medicoDestinoId: doctorId, motivo: encMotivo || null })
-      });
+      if (role === "enfermagem" && encTipo === "exame") {
+        // enfermagem (Sala 1/2) -> encaminhar para Sala 3
+        await apiFetch("/atendimento/encaminhar", {
+          method: "POST",
+          body: JSON.stringify({ senha: encSenha, tipo: "exame", salaDestino: "Sala de exame 3", motivo: encMotivo || null })
+        });
+      } else {
+        // enfermagem/fono: encaminhar para médico/fono
+        if (!doctorId) return;
+        await apiFetch("/atendimento/encaminhar", {
+          method: "POST",
+          body: JSON.stringify({ senha: encSenha, tipo: "medico", medicoDestinoId: doctorId, motivo: encMotivo || null })
+        });
+      }
       setEncOpen(false);
       await load();
       return;
@@ -418,6 +431,23 @@ export default function MedicalPage() {
                     <option value="fono">Fono (Exames 3)</option>
                   </select>
                 </div>
+              ) : role === "enfermagem" ? (
+                <div className="mb-5">
+                  <label className="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
+                    <i className="fas fa-route text-blue-500 w-4" /> Tipo de Encaminhamento
+                  </label>
+                  <select
+                    className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                    value={encTipo === "enfermagem" || encTipo === "fono" ? "medico" : encTipo}
+                    onChange={(e) => setEncTipo(e.target.value as any)}
+                  >
+                    <option value="medico">Médico / Fono</option>
+                    <option value="exame">Sala de exame 3</option>
+                  </select>
+                  <div className="mt-2 text-xs text-gray-600">
+                    Você está em <strong>{localLabel}</strong>.
+                  </div>
+                </div>
               ) : (
                 <div className="mb-5 text-sm text-gray-700">
                   Você está em <strong>{localLabel}</strong>. Encaminhamento disponível: <strong>voltar para médico</strong>.
@@ -425,10 +455,10 @@ export default function MedicalPage() {
               )}
 
               {/* Médico de destino (quando encaminha para médico) */}
-              {(role !== "medico" || encTipo === "medico") ? (
+              {encTipo === "medico" ? (
                 <div className="mb-5">
                   <label className="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
-                    <i className="fas fa-user-md text-blue-500 w-4" /> Médico de Destino
+                    <i className="fas fa-user-md text-blue-500 w-4" /> Destino (Médico / Fono)
                   </label>
                   <select
                     className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
@@ -436,10 +466,10 @@ export default function MedicalPage() {
                     onChange={(e) => setDoctorId(e.target.value)}
                     required
                   >
-                    <option value="">Selecione o médico</option>
+                    <option value="">Selecione o destino</option>
                     {doctors.map((d) => (
                       <option key={d.id} value={d.id}>
-                        {d.nome}
+                        {String(d.role || "").toLowerCase() === "fono" ? `Fono - ${d.nome}` : d.nome}
                         {d.specialty ? ` - ${d.specialty}` : ""}
                       </option>
                     ))}
@@ -448,12 +478,12 @@ export default function MedicalPage() {
               ) : null}
 
               {/* Sala de exame (quando encaminha para exames) */}
-              {role === "medico" && encTipo !== "medico" ? (
+              {(role === "medico" && encTipo !== "medico") || (role === "enfermagem" && encTipo === "exame") ? (
                 <div className="mb-5">
                   <label className="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
                     <i className="fas fa-vials text-blue-500 w-4" /> Sala de Exame
                   </label>
-                  {encTipo === "fono" ? (
+                  {encTipo === "fono" || (role === "enfermagem" && encTipo === "exame") ? (
                     <input
                       className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base bg-gray-100"
                       value="Sala de exame 3"
