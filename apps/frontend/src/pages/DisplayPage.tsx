@@ -22,13 +22,13 @@ export default function DisplayPage() {
 
   // Painel público: sem login
   const { socket, status: socketStatus, lastError } = useSocket({ publicDisplay: true });
-  const [soundMode, setSoundMode] = useState<"forte" | "medio" | "clinico">(() => {
+  const [soundMode, setSoundMode] = useState<"campainha" | "forte" | "medio" | "clinico">(() => {
     try {
       const v = String(localStorage.getItem("SAFE_DISPLAY_SOUND_MODE") || "").trim();
-      if (v === "forte" || v === "medio" || v === "clinico") return v;
-      return "forte";
+      if (v === "campainha" || v === "forte" || v === "medio" || v === "clinico") return v;
+      return "campainha";
     } catch {
-      return "forte";
+      return "campainha";
     }
   });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
@@ -142,6 +142,65 @@ export default function DisplayPage() {
     }, Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
   }
 
+  function playDoorbell(ctx: AudioContext) {
+    const now = ctx.currentTime;
+    const out = withOutputChain(ctx);
+
+    // Campainha "ding-dong": parcials + decay longo (mais parecido com campainha real).
+    const makeBellNote = (startAt: number, baseHz: number, dur: number, vol: number) => {
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(Math.min(3200, baseHz * 3), startAt);
+      filter.Q.setValueAtTime(0.9, startAt);
+      filter.connect(out.destination);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.connect(filter);
+
+      const partials = [
+        { mul: 1, amp: 1.0 },
+        { mul: 2.01, amp: 0.55 },
+        { mul: 3.12, amp: 0.35 },
+        { mul: 4.23, amp: 0.22 }
+      ];
+
+      const oscillators: OscillatorNode[] = [];
+      for (const p of partials) {
+        const osc = ctx.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(baseHz * p.mul, startAt);
+        osc.connect(gain);
+        oscillators.push(osc);
+      }
+
+      // Attack rápido + decay longo
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), startAt + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+
+      for (const osc of oscillators) osc.start(startAt);
+      for (const osc of oscillators) osc.stop(startAt + dur + 0.03);
+
+      const endAt = startAt + dur + 0.04;
+      setTimeout(() => {
+        try {
+          for (const osc of oscillators) osc.disconnect();
+          gain.disconnect();
+          filter.disconnect();
+        } catch {
+          // ignore
+        }
+      }, Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
+    };
+
+    // ding (mais agudo) + dong (mais grave)
+    makeBellNote(now, 988, 0.55, 0.38); // ~B5
+    makeBellNote(now + 0.38, 659, 0.65, 0.42); // ~E5
+
+    const endAt = now + 1.2;
+    setTimeout(() => out.cleanup(), Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
+  }
+
   function playMediumAlert(ctx: AudioContext) {
     const now = ctx.currentTime;
     const out = withOutputChain(ctx);
@@ -245,6 +304,7 @@ export default function DisplayPage() {
   }
 
   function playNotification(ctx: AudioContext) {
+    if (soundMode === "campainha") return playDoorbell(ctx);
     if (soundMode === "forte") return playStrongAlert(ctx);
     if (soundMode === "medio") return playMediumAlert(ctx);
     return playClinicChime(ctx);
@@ -304,7 +364,7 @@ export default function DisplayPage() {
     }
   }
 
-  function saveSoundMode(next: "forte" | "medio" | "clinico") {
+  function saveSoundMode(next: "campainha" | "forte" | "medio" | "clinico") {
     setSoundMode(next);
     try {
       localStorage.setItem("SAFE_DISPLAY_SOUND_MODE", next);
@@ -429,6 +489,7 @@ export default function DisplayPage() {
             onChange={(e) => saveSoundMode(e.target.value as any)}
             title="Tipo de som"
           >
+            <option value="campainha">Campainha</option>
             <option value="forte">Alerta forte</option>
             <option value="medio">Alerta médio</option>
             <option value="clinico">Clínico</option>
