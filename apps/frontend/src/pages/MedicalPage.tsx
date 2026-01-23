@@ -154,12 +154,19 @@ export default function MedicalPage() {
     }
   }
 
-  function openEncaminhar(senha: string) {
+  function openEncaminhar(row: SenhaRow) {
+    const senha = String(row?.senha || "").trim();
+    if (!senha) return;
     setEncSenha(senha);
     setEncMotivo("");
     setDoctorId("");
-    setSalaExame(role === "fono" ? "Sala de exame 3" : "");
-    setEncTipo(role === "medico" ? "medico" : "medico");
+    const enc = normalizeEncaminhamento(row?.encaminhamento);
+    const salaDestino = enc?.salaDestino != null ? String(enc.salaDestino) : "";
+    const salaNorm = normalizeRoom(salaDestino);
+    const inferredSala =
+      salaNorm.includes("exame 3") ? "Sala de exame 3" : salaNorm.includes("exame 2") ? "Sala de exame 2" : salaNorm.includes("exame 1") ? "Sala de exame 1" : "";
+    setSalaExame(role === "fono" ? "Sala de exame 3" : inferredSala);
+    setEncTipo("medico");
     loadDoctors();
     setEncOpen(true);
   }
@@ -174,10 +181,11 @@ export default function MedicalPage() {
     // - fono: encaminha de volta para médico (consulta)
     if (role !== "medico") {
       if (role === "enfermagem" && encTipo === "exame") {
-        // enfermagem (Sala 1/2) -> encaminhar para Sala 3
+        // enfermagem: pode encaminhar entre salas de exame (1/2/3)
+        const sala = salaExame || "Sala de exame 2";
         await apiFetch("/atendimento/encaminhar", {
           method: "POST",
-          body: JSON.stringify({ senha: encSenha, tipo: "exame", salaDestino: "Sala de exame 3", motivo: encMotivo || null })
+          body: JSON.stringify({ senha: encSenha, tipo: "exame", salaDestino: sala, motivo: encMotivo || null })
         });
       } else {
         // enfermagem/fono: encaminhar para médico/fono
@@ -367,7 +375,7 @@ export default function MedicalPage() {
                       <>
                         <button
                           className="bg-gradient-to-br from-orange-500 to-orange-700 text-white border-none rounded-xl py-3 px-6 text-lg font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-orange-500/30 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-orange-500/40"
-                          onClick={() => openEncaminhar(r.senha)}
+                          onClick={() => openEncaminhar(r)}
                           disabled={!myId || String(r.medico_atendendo_id || "") !== String(myId)}
                         >
                           Encaminhar
@@ -438,11 +446,11 @@ export default function MedicalPage() {
                   </label>
                   <select
                     className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
-                    value={encTipo === "enfermagem" || encTipo === "fono" ? "medico" : encTipo}
+                    value={encTipo === "exame" ? "exame" : "medico"}
                     onChange={(e) => setEncTipo(e.target.value as any)}
                   >
                     <option value="medico">Médico / Fono</option>
-                    <option value="exame">Sala de exame 3</option>
+                    <option value="exame">Exames (Sala 1/2/3)</option>
                   </select>
                   <div className="mt-2 text-xs text-gray-600">
                     Você está em <strong>{localLabel}</strong>.
@@ -483,12 +491,24 @@ export default function MedicalPage() {
                   <label className="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
                     <i className="fas fa-vials text-blue-500 w-4" /> Sala de Exame
                   </label>
-                  {encTipo === "fono" || (role === "enfermagem" && encTipo === "exame") ? (
+                  {encTipo === "fono" ? (
                     <input
                       className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base bg-gray-100"
                       value="Sala de exame 3"
                       readOnly
                     />
+                  ) : role === "enfermagem" && encTipo === "exame" ? (
+                    <select
+                      className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                      value={salaExame}
+                      onChange={(e) => setSalaExame(e.target.value)}
+                      required
+                    >
+                      <option value="">Selecione</option>
+                      <option value="Sala de exame 1">Sala de exame 1</option>
+                      <option value="Sala de exame 2">Sala de exame 2</option>
+                      <option value="Sala de exame 3">Sala de exame 3</option>
+                    </select>
                   ) : (
                     <select
                       className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
