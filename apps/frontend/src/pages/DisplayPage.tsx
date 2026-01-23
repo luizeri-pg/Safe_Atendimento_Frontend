@@ -55,43 +55,60 @@ export default function DisplayPage() {
     return audioCtxRef.current;
   }
 
-  function playBeepTwice(ctx: AudioContext) {
+  function playClinicChime(ctx: AudioContext) {
     const now = ctx.currentTime;
-    const toneHz = 1040;
-    const beepDur = 0.12;
-    const gap = 0.12;
+    const note1Hz = 880; // "ding"
+    const note2Hz = 660; // "dong"
+    const note1Dur = 0.16;
+    const gap = 0.06;
+    const note2Dur = 0.20;
 
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.connect(ctx.destination);
+    // Suaviza o timbre para ficar mais “painel”.
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(2400, now);
+    filter.Q.setValueAtTime(0.7, now);
+    filter.connect(ctx.destination);
 
-    const osc = ctx.createOscillator();
-    osc.type = "square";
-    osc.frequency.setValueAtTime(toneHz, now);
-    osc.connect(gain);
+    const makeNote = (startAt: number, freq: number, dur: number) => {
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.connect(filter);
 
-    // beep 1
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.35, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + beepDur);
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, startAt);
+      osc.connect(gain);
 
-    // beep 2
-    const t2 = now + beepDur + gap;
-    gain.gain.setValueAtTime(0.0001, t2);
-    gain.gain.exponentialRampToValueAtTime(0.35, t2 + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t2 + beepDur);
+      // Attack rápido + decay suave
+      gain.gain.exponentialRampToValueAtTime(0.28, startAt + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
 
-    osc.start(now);
-    osc.stop(t2 + beepDur + 0.02);
+      osc.start(startAt);
+      osc.stop(startAt + dur + 0.02);
 
-    osc.onended = () => {
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // ignore
+        }
+      };
+    };
+
+    makeNote(now, note1Hz, note1Dur);
+    makeNote(now + note1Dur + gap, note2Hz, note2Dur);
+
+    // Cleanup do filtro no final
+    const endAt = now + note1Dur + gap + note2Dur + 0.04;
+    setTimeout(() => {
       try {
-        osc.disconnect();
-        gain.disconnect();
+        filter.disconnect();
       } catch {
         // ignore
       }
-    };
+    }, Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
   }
 
   function beepTwice() {
@@ -111,14 +128,14 @@ export default function DisplayPage() {
         .then(() => {
           if (ctx.state === "running") {
             setSoundStatus("ready");
-            playBeepTwice(ctx);
+            playClinicChime(ctx);
           }
         })
         .catch(() => null);
       return;
     }
 
-    playBeepTwice(ctx);
+    playClinicChime(ctx);
   }
 
   async function enableSound() {
