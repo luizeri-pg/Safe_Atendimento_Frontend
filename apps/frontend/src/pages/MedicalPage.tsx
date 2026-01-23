@@ -136,6 +136,7 @@ export default function MedicalPage() {
   const [doctors, setDoctors] = useState<(DoctorProfile & { role?: string | null })[]>([]);
   const [doctorId, setDoctorId] = useState<string>("");
   const [salaExame, setSalaExame] = useState<string>("");
+  const [encFromSalaExame, setEncFromSalaExame] = useState<string>("");
 
   async function loadDoctors() {
     try {
@@ -176,8 +177,10 @@ export default function MedicalPage() {
       if (salaNorm.includes("exame 3")) setEncTipo("fono");
       else if (salaNorm.includes("exame 1") || salaNorm.includes("exame 2")) setEncTipo("exame");
       else setEncTipo("medico");
+      setEncFromSalaExame(inferredSala);
     } else {
       setEncTipo("medico");
+      setEncFromSalaExame("");
     }
     loadDoctors();
     setEncOpen(true);
@@ -196,8 +199,14 @@ export default function MedicalPage() {
         // enfermagem:
         // - Exames (1/2) fica na enfermagem
         // - Exames 3 é sempre Fono
-        const sala =
-          encTipo === "fono" ? "Sala de exame 3" : salaExame || "Sala de exame 2";
+        const defaultSala =
+          encFromSalaExame === "Sala de exame 1"
+            ? "Sala de exame 2"
+            : encFromSalaExame === "Sala de exame 2"
+              ? "Sala de exame 1"
+              : "Sala de exame 2";
+        const sala = encTipo === "fono" ? "Sala de exame 3" : salaExame || defaultSala;
+        if (encTipo !== "fono" && encFromSalaExame && sala === encFromSalaExame) return;
         await apiFetch("/atendimento/encaminhar", {
           method: "POST",
           body: JSON.stringify({ senha: encSenha, tipo: "exame", salaDestino: sala, motivo: encMotivo || null })
@@ -526,8 +535,8 @@ export default function MedicalPage() {
                       required
                     >
                       <option value="">Selecione</option>
-                      <option value="Sala de exame 1">Sala de exame 1</option>
-                      <option value="Sala de exame 2">Sala de exame 2</option>
+                      {encFromSalaExame !== "Sala de exame 1" ? <option value="Sala de exame 1">Sala de exame 1</option> : null}
+                      {encFromSalaExame !== "Sala de exame 2" ? <option value="Sala de exame 2">Sala de exame 2</option> : null}
                     </select>
                   ) : (
                     <select
