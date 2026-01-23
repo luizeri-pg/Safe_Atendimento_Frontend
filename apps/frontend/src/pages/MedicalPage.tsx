@@ -97,7 +97,15 @@ export default function MedicalPage() {
         return false;
       });
 
-      setRows(visible);
+      // UX: manter "em atendimento" sempre no topo para não precisar rolar para finalizar/encaminhar.
+      const sorted = [...visible].sort((a, b) => {
+        const aActive = a.status === "em_atendimento";
+        const bActive = b.status === "em_atendimento";
+        if (aActive !== bActive) return aActive ? -1 : 1;
+        return 0; // mantém a ordem do backend dentro do mesmo grupo
+      });
+
+      setRows(sorted);
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
