@@ -1,106 +1,38 @@
-# Safe Atendimento — Frontend + Backend
+# Safe Atendimento (apps/frontend + apps/backend)
 
-Aplicação web para o sistema Safe Atendimento.
+Monorepo com:
 
-Agora o projeto suporta **rodar frontend e backend no mesmo serviço** (ideal para Railway): o backend serve os arquivos de `pages/` e expõe a API em `/api/*`.
+- `apps/frontend`: React + Vite
+- `apps/backend`: Node.js/Express + Socket.IO (serve o build do frontend em produção)
 
-## Estrutura
+## Rodar local (dev)
 
-- `index.html` - Página inicial
-- `login.html` - Página de login
-- `dashboard.html` - Dashboard principal
-- `atendente.html` - Interface do atendente
-- `medico.html` - Interface do médico
-- `painel.html` - Painel de controle
-- `historico.html` - Histórico de atendimentos
-
-## Como usar
-
-Abra os arquivos HTML diretamente no navegador ou configure um servidor web local.
-
-## Rodar local (recomendado)
-
-### Configurar Supabase (.env) (opcional para testar)
-
-Se você quiser testar o frontend usando Supabase em localhost:
-
-1. Copie `ENV.example` para `.env` na raiz do repo
-2. Preencha:
-   - `SUPABASE_URL` (se necessário)
-   - `SUPABASE_ANON_KEY`
-
-O backend local lê esse `.env` usando `node --env-file=.env` e expõe os valores (somente `SUPABASE_URL` e `SUPABASE_ANON_KEY`) para o browser via `GET /js/supabaseEnv.js`.
-
-### Pré-requisitos
-
-- Node.js **22.x** (o projeto inclui `.nvmrc` e `.mise.toml`)
-
-Se você usa `nvm`:
-
-```bash
-nvm install
-nvm use
-```
-
-Se você usa `mise`:
-
-```bash
-mise install
-```
-
-### Subir o serviço (backend + frontend no mesmo servidor)
-
-Na raiz do repositório:
+Pré-requisito: Node.js **22.x**.
 
 ```bash
 npm install
 npm run dev
 ```
 
-- **Frontend**: `http://localhost:3000/pages/index.html`
-- **Health**: `http://localhost:3000/health`
-- **API**: `http://localhost:3000/api/*`
+- Front (dev): `http://localhost:5173`
+- Backend: `http://localhost:3000/health`
 
-Se você quiser auto-reload, use:
+## Variáveis de ambiente
 
-```bash
-npm run dev:watch
-```
+Crie `.env` na raiz (sem aspas e sem caracteres estranhos):
 
-### Frontend separado (opcional)
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (recomendado para o Totem “entrar direto na fila” quando encontra no SOC)
+- `SAFE_CORS_ORIGIN` (opcional, vírgula separado)
+- `SOC_*` (opcional, integração SOC)
 
-Se você quiser servir apenas os HTML/JS por outra porta:
+## Deploy no Railway (um único serviço)
 
-```bash
-python3 -m http.server 8000
-```
+Este repo já inclui `railway.toml`.
 
-Depois abra `http://localhost:8000/pages/index.html`.  
-O frontend em localhost já aponta a API para `http://localhost:3000/api` automaticamente (via `js/config.js`).
+- **Build**: `npm run build`
+- **Start**: `npm run start`
+- **Healthcheck**: `/health`
 
-## Tempo real (múltiplos usuários ao mesmo tempo)
-
-Para **3–4 pessoas usarem simultaneamente** (atendente + médico/enfermagem + painel) e todos verem a fila atualizar “na hora”, o frontend assina mudanças da tabela `public.senhas` via **Supabase Realtime** (com polling como fallback).
-
-### Habilitar Realtime no Supabase
-
-No Supabase, garanta que a tabela `public.senhas` esteja habilitada para Realtime (replicação). Você pode fazer isso via SQL:
-
-```sql
-alter publication supabase_realtime add table public.senhas;
-```
-
-Obs.: se você também quiser eventos ao vivo do log, pode habilitar `public.senha_eventos` do mesmo jeito.
-
-## Backend (Railway)
-
-Para usar **front + back juntos no Railway** (e gerar um domínio `*.up.railway.app`), use o backend em `backend/` e rode pela raiz do repo:
-
-- **Start (Railway)**: `npm start`
-- **Domínio**: Settings → Domains → Generate Domain
-- **Teste**: `https://SEU-DOMINIO.up.railway.app/health` (deve retornar `{ ok: true }`)
-- **Banco (padrão)**: SQLite (arquivo local).
-  - **Importante**: no Railway, SQLite pode não ser persistente entre deploys/restarts. Se precisar “guardar tudo” com garantia, use Postgres.
-
-- Como rodar e publicar no Railway: veja `backend/README.md`
-- Como apontar o frontend para outra API (se necessário): use `js/config.js` (via `localStorage` ou `?apiBase=...`)
+No Railway, configure as variáveis de ambiente do Supabase (e SOC se usar).

@@ -4,15 +4,21 @@
   "description": "Aplicação web frontend + backend para o sistema Safe Atendimento",
   "private": true,
   "type": "module",
-  "main": "backend/src/index.js",
+  "main": "apps/backend/dist/index.js",
   "workspaces": [
-    "backend"
+    "apps/*"
   ],
   "scripts": {
-    "build": "node -e \"console.log('No build step needed')\"",
-    "start": "node backend/src/index.js",
-    "dev": "node backend/src/index.js",
-    "dev:watch": "node --watch backend/src/index.js"
+    "dev": "npm run dev:apps",
+    "build": "npm run build:apps",
+    "start": "npm run start:apps",
+    "dev:apps": "concurrently -k -n backend,frontend -c blue,green \"npm run dev -w @safe/backend\" \"npm run dev -w @safe/frontend\"",
+    "build:apps": "npm run build -w @safe/frontend && npm run build -w @safe/backend",
+    "start:apps": "npm run start -w @safe/backend",
+    "dev:apps:backend": "npm run dev -w @safe/backend",
+    "build:apps:backend": "npm run build -w @safe/backend",
+    "dev:apps:frontend": "npm run dev -w @safe/frontend",
+    "build:apps:frontend": "npm run build -w @safe/frontend"
   },
   "engines": {
     "node": "22.x"
@@ -35,5 +41,8 @@
   "homepage": "https://github.com/luizeri-pg/Safe_Atendimento_Frontend#readme",
   "dependencies": {
     "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
