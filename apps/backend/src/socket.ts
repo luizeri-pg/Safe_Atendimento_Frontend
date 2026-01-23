@@ -37,7 +37,13 @@ export function attachSocket(httpServer: HttpServer): SocketContext {
       const publicToken = String((socket.handshake as any)?.auth?.publicToken || "").trim();
 
       if (!token) {
-        if (env.SAFE_PUBLIC_DISPLAY_TOKEN && publicToken && publicToken === env.SAFE_PUBLIC_DISPLAY_TOKEN) {
+        // Painel público: se SAFE_PUBLIC_DISPLAY_TOKEN estiver configurado, exige match.
+        // Se não estiver configurado, permite conexão pública como "public_display".
+        if (!env.SAFE_PUBLIC_DISPLAY_TOKEN) {
+          (socket.data as any).role = "public_display";
+          return next();
+        }
+        if (publicToken && publicToken === env.SAFE_PUBLIC_DISPLAY_TOKEN) {
           (socket.data as any).role = "public_display";
           return next();
         }

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { useSocket } from "../socket/useSocket";
 import LegacyBackground from "../components/LegacyBackground";
-import { getStoredUser } from "../auth/storage";
 import { senhaCurta } from "../utils/senha";
 
 type PainelRow = {
@@ -20,11 +19,9 @@ type PainelRow = {
 
 export default function DisplayPage() {
   const nav = useNavigate();
-  const user = getStoredUser();
-  const role = String(user?.role || "").trim().toLowerCase();
-  if (!role) return <Navigate to="/login" replace />;
 
-  const { socket, status: socketStatus, lastError } = useSocket();
+  // Painel público: sem login
+  const { socket, status: socketStatus, lastError } = useSocket({ publicDisplay: true });
   const [pendentes, setPendentes] = useState<PainelRow[]>([]);
   const [emAtendimento, setEmAtendimento] = useState<PainelRow[]>([]);
   const [highlight, setHighlight] = useState<{
@@ -93,12 +90,6 @@ export default function DisplayPage() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-3 py-2 px-3 bg-white/10 rounded-lg">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-semibold text-sm">
-              {(String(user?.nome || user?.username || "SA").trim().slice(0, 2) || "SA").toUpperCase()}
-            </div>
-            <div className="text-sm font-medium">{user?.nome || user?.username}</div>
-          </div>
           <span className="text-xs opacity-90">{socketStatus}</span>
           <button className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition" onClick={() => load()}>
             <i className="fas fa-sync-alt mr-2" />

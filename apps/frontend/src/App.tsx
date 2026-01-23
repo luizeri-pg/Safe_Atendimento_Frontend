@@ -25,7 +25,7 @@ export default function App() {
       <Route path="/history" element={<RequireAuth><HistoryPage /></RequireAuth>} />
       <Route path="/reception" element={<RequireAuth><ReceptionPage /></RequireAuth>} />
       <Route path="/medical" element={<RequireAuth><MedicalPage /></RequireAuth>} />
-      <Route path="/display" element={<RequireAuth><DisplayPage /></RequireAuth>} />
+      <Route path="/display" element={<DisplayPage />} />
       <Route path="/totem" element={<TotemPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

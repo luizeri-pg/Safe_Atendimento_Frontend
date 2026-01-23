@@ -850,12 +850,9 @@ app.post("/api/atendimento/encaminhar", async (req, res) => {
 app.get("/api/painel/pendentes", async (_req, res) => {
   try {
     const authHeader = getBearer(res.req.headers.authorization);
-    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
-
-    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
-    if (!supabaseUrl || !apikey) {
-      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
-    }
+    const { url: supabaseUrl } = getSupabasePublicEnv();
+    const { apikey } = getSupabaseServerEnv(); // usa service role/anon do backend (server-side)
+    if (!supabaseUrl || !apikey) return sendError(res, 500, "Supabase não configurado no backend.");
 
     const targetUrl =
       `${supabaseUrl}/rest/v1/senhas` +
@@ -866,7 +863,7 @@ app.get("/api/painel/pendentes", async (_req, res) => {
       `&limit=50`;
     const upstream = await fetch(targetUrl, {
       method: "GET",
-      headers: { apikey, Authorization: authHeader, Accept: "application/json" }
+      headers: { apikey, Authorization: authHeader || `Bearer ${apikey}`, Accept: "application/json" }
     });
     const txt = await upstream.text();
     if (!upstream.ok) return sendError(res, upstream.status, "Erro ao carregar painel (pendentes)", { detail: txt.slice(0, 500) });
@@ -880,12 +877,9 @@ app.get("/api/painel/pendentes", async (_req, res) => {
 app.get("/api/painel/em_atendimento", async (_req, res) => {
   try {
     const authHeader = getBearer(res.req.headers.authorization);
-    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
-
-    const { url: supabaseUrl, apikey } = getSupabasePublicEnv();
-    if (!supabaseUrl || !apikey) {
-      return sendError(res, 500, "Supabase não configurado no backend (SUPABASE_URL + SUPABASE_ANON_KEY).");
-    }
+    const { url: supabaseUrl } = getSupabasePublicEnv();
+    const { apikey } = getSupabaseServerEnv(); // usa service role/anon do backend (server-side)
+    if (!supabaseUrl || !apikey) return sendError(res, 500, "Supabase não configurado no backend.");
 
     const targetUrl =
       `${supabaseUrl}/rest/v1/senhas` +
@@ -895,7 +889,7 @@ app.get("/api/painel/em_atendimento", async (_req, res) => {
       `&limit=20`;
     const upstream = await fetch(targetUrl, {
       method: "GET",
-      headers: { apikey, Authorization: authHeader, Accept: "application/json" }
+      headers: { apikey, Authorization: authHeader || `Bearer ${apikey}`, Accept: "application/json" }
     });
     const txt = await upstream.text();
     if (!upstream.ok) return sendError(res, upstream.status, "Erro ao carregar painel (em atendimento)", { detail: txt.slice(0, 500) });
