@@ -10,6 +10,8 @@ type PainelRow = {
   nome: string | null;
   cpf?: string | null;
   status: string;
+  prioridade?: boolean | null;
+  prioridade_at?: string | null;
   encaminhamento?: any;
   called_at?: string | null;
   updated_at?: string | null;
@@ -388,7 +390,14 @@ export default function DisplayPage() {
                   pendentes.slice(0, 12).map((s) => (
                     <div key={s.senha} className="rounded-2xl bg-white shadow p-5 flex items-center justify-between">
                       <div>
-                        <div className="text-4xl font-black text-blue-600">{senhaCurta(s.senha) || s.senha}</div>
+                        <div className="text-4xl font-black text-blue-600 flex items-center gap-3 flex-wrap">
+                          <span>{senhaCurta(s.senha) || s.senha}</span>
+                          {s.prioridade ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold bg-red-100 text-red-800 border border-red-200">
+                              PRIORITÁRIO
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="text-gray-700 text-lg font-semibold">{s.nome || "Paciente"}</div>
                         {s.encaminhamento?.salaDestino ? (
                           <div className="text-gray-600 text-sm font-medium mt-1">

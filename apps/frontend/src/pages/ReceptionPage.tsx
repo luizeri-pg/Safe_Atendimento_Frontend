@@ -11,6 +11,8 @@ type SenhaRow = {
   nome: string | null;
   cpf: string | null;
   status: string;
+  prioridade?: boolean | null;
+  prioridade_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   encaminhamento?: any;
@@ -163,8 +165,13 @@ export default function ReceptionPage() {
                       {senhaCurta(r.senha) || r.senha}
                     </div>
                     <div className="flex-1">
-                      <div className="text-lg font-semibold text-gray-800 mb-1">
+                      <div className="text-lg font-semibold text-gray-800 mb-1 flex items-center gap-2 flex-wrap">
                         {r.nome ? r.nome : r.cpf ? `Sem nome (CPF: ${r.cpf})` : "Sem nome"}
+                        {r.prioridade ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold bg-red-100 text-red-800 border border-red-200">
+                            PRIORITÁRIO
+                          </span>
+                        ) : null}
                       </div>
                       <div className="text-sm text-gray-500 font-medium">Status: {r.status}</div>
                     </div>

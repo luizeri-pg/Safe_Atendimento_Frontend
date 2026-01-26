@@ -716,9 +716,11 @@ app.get("/api/atendente/senhas", async (req, res) => {
 
     const targetUrl =
       `${supabaseUrl}/rest/v1/senhas` +
-      `?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id` +
+      `?select=senha,nome,cpf,status,prioridade,prioridade_at,created_at,updated_at,encaminhamento,medico_atendendo_id` +
       `&status=in.(cadastro,pendente)` +
       `&medico_atendendo_id=is.null` +
+      `&order=prioridade.desc` +
+      `&order=prioridade_at.asc.nullslast` +
       `&order=updated_at.desc` +
       `&limit=200`;
 
@@ -903,9 +905,11 @@ app.get("/api/painel/pendentes", async (_req, res) => {
 
     const targetUrl =
       `${supabaseUrl}/rest/v1/senhas` +
-      `?select=senha,nome,status,encaminhamento,medico_atendendo_id,created_at,updated_at,called_at` +
+      `?select=senha,nome,status,prioridade,prioridade_at,encaminhamento,medico_atendendo_id,created_at,updated_at,called_at` +
       `&status=in.(cadastro,pendente)` +
       `&medico_atendendo_id=is.null` +
+      `&order=prioridade.desc` +
+      `&order=prioridade_at.asc.nullslast` +
       `&order=updated_at.desc` +
       `&limit=50`;
     const upstream = await fetch(targetUrl, {
@@ -930,7 +934,7 @@ app.get("/api/painel/em_atendimento", async (_req, res) => {
 
     const targetUrl =
       `${supabaseUrl}/rest/v1/senhas` +
-      `?select=senha,nome,status,encaminhamento,medico_atendendo_id,created_at,updated_at,called_at` +
+      `?select=senha,nome,status,prioridade,prioridade_at,encaminhamento,medico_atendendo_id,created_at,updated_at,called_at` +
       `&status=eq.em_atendimento` +
       `&order=called_at.desc` +
       `&limit=20`;

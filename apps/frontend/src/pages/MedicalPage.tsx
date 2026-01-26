@@ -417,7 +417,14 @@ export default function MedicalPage() {
                 >
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-700" />
                   <div>
-                    <div className="text-3xl font-black text-blue-500">{senhaCurta(r.senha) || r.senha}</div>
+                    <div className="text-3xl font-black text-blue-500 flex items-center gap-3 flex-wrap">
+                      <span>{senhaCurta(r.senha) || r.senha}</span>
+                      {r.prioridade ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold bg-red-100 text-red-800 border border-red-200">
+                          PRIORITÁRIO
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="text-xl font-medium text-gray-800">{r.nome || "Sem nome"}</div>
                     {queueTag ? <div className="text-sm text-gray-500 font-medium mt-1">Destino: {queueTag}</div> : null}
                   </div>
