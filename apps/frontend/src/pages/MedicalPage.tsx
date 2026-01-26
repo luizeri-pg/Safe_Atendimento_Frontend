@@ -157,9 +157,9 @@ export default function MedicalPage() {
 
   async function loadDoctors() {
     try {
-      // Médicos + Fono também são destinos válidos para encaminhar (tipo "medico" no backend)
+      // Destino "médico": listar apenas médicos (sem Fono/Fonoaudiologia).
       const data = await apiFetch<(DoctorProfile & { role?: string | null })[]>(
-        `/supa/profiles?select=id,nome,role,specialty&role=in.(medico,fono)&order=nome.asc`,
+        `/supa/profiles?select=id,nome,role,specialty&role=eq.medico&order=nome.asc`,
         {
         method: "GET"
         }
@@ -481,7 +481,7 @@ export default function MedicalPage() {
                       if (v === "enfermagem" && !salaExame) setSalaExame("Sala de exame 1");
                     }}
                   >
-                    <option value="medico">Médico 2</option>
+                    <option value="medico">Médico</option>
                     <option value="enfermagem">Enfermagem (Exames 1 e 2)</option>
                     <option value="fono">Fono (Audiometria)</option>
                   </select>
@@ -501,7 +501,7 @@ export default function MedicalPage() {
                       if (v === "exame" && !salaExame) setSalaExame("Sala de exame 1");
                     }}
                   >
-                    <option value="medico">Médico / Fono</option>
+                    <option value="medico">Médico</option>
                     <option value="exame">Enfermagem (Exames 1 e 2)</option>
                     <option value="fono">Fono (Audiometria)</option>
                   </select>
@@ -519,7 +519,7 @@ export default function MedicalPage() {
               {encTipo === "medico" ? (
                 <div className="mb-5">
                   <label className="flex items-center gap-2 font-semibold text-gray-800 mb-2 text-sm">
-                    <i className="fas fa-user-md text-blue-500 w-4" /> Destino (Médico / Fono)
+                    <i className="fas fa-user-md text-blue-500 w-4" /> Destino (Médico 2)
                   </label>
                   <select
                     className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base transition-all duration-300 bg-gray-50 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
@@ -530,7 +530,7 @@ export default function MedicalPage() {
                     <option value="">Selecione o destino</option>
                     {doctors.map((d) => (
                       <option key={d.id} value={d.id}>
-                        {String(d.role || "").toLowerCase() === "fono" ? `Fono - ${d.nome}` : d.nome}
+                        {d.nome}
                         {d.specialty ? ` - ${d.specialty}` : ""}
                       </option>
                     ))}
