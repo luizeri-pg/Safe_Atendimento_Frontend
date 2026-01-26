@@ -31,6 +31,7 @@ export default function ReceptionPage() {
   const [senha, setSenha] = useState<string>("");
   const [cpf, setCpf] = useState<string>("");
   const [nome, setNome] = useState<string>("");
+  const [prioridade, setPrioridade] = useState<boolean>(false);
 
   const title = useMemo(() => `Recepção (${socketStatus})`, [socketStatus]);
 
@@ -61,6 +62,7 @@ export default function ReceptionPage() {
       setSenha(nextSenha);
       setCpf(nextCpf);
       setNome("");
+      setPrioridade(false);
       setModalOpen(true);
     };
     socket.on("queue_update", onQueue);
@@ -77,7 +79,7 @@ export default function ReceptionPage() {
     if (!senha || !cpf || !nome) return;
     await apiFetch("/atendimento/triar", {
       method: "POST",
-      body: JSON.stringify({ senha, cpf, nome, soc_status: "nao_verificado" })
+      body: JSON.stringify({ senha, cpf, nome, soc_status: "nao_verificado", prioridade })
     });
     setModalOpen(false);
     await load();
@@ -227,6 +229,15 @@ export default function ReceptionPage() {
                 onChange={(e) => setCpf(e.target.value)}
                 required
               />
+              <label className="flex items-center gap-3 text-sm font-semibold text-gray-700 mt-4 select-none">
+                <input
+                  type="checkbox"
+                  className="w-5 h-5 accent-blue-600"
+                  checked={prioridade}
+                  onChange={(e) => setPrioridade(e.target.checked)}
+                />
+                Prioritário
+              </label>
               <div className="flex gap-3 mt-6 justify-end">
                 <button
                   type="button"

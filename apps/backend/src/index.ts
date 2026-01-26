@@ -754,11 +754,12 @@ app.post("/api/atendimento/triar", async (req, res) => {
     const nome = String((req as any).body?.nome || "").trim();
     const cpf = String((req as any).body?.cpf || "").trim();
     const soc_status = String((req as any).body?.soc_status || "nao_verificado").trim();
+    const prioridade = Boolean((req as any).body?.prioridade);
     if (!senha || !nome || !cpf) return sendError(res, 400, "Campos 'senha', 'nome' e 'cpf' são obrigatórios");
 
     const out = await callSupabaseRpc({
       rpcName: "triar_senha",
-      rpcBody: { p_senha: senha, p_nome: nome, p_cpf: cpf, p_soc_status: soc_status },
+      rpcBody: { p_senha: senha, p_nome: nome, p_cpf: cpf, p_soc_status: soc_status, p_prioridade: prioridade },
       authHeader
     });
     if (!out.ok) return sendError(res, out.status, "Falha ao triar senha", { detail: out.text.slice(0, 500) });

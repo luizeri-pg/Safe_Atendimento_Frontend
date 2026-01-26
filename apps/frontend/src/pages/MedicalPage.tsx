@@ -11,6 +11,8 @@ type SenhaRow = {
   nome: string | null;
   cpf: string | null;
   status: string;
+  prioridade?: boolean | null;
+  prioridade_at?: string | null;
   encaminhamento?: any;
   medico_atendendo_id?: string | null;
   updated_at?: string | null;
@@ -87,7 +89,7 @@ export default function MedicalPage() {
     setLoading(true);
     try {
       const data = await apiFetch<SenhaRow[]>(
-        `/supa/senhas?select=senha,nome,cpf,status,created_at,updated_at,encaminhamento,medico_atendendo_id&status=in.(pendente,em_atendimento)&order=updated_at.asc&limit=200`,
+        `/supa/senhas?select=senha,nome,cpf,status,prioridade,prioridade_at,created_at,updated_at,encaminhamento,medico_atendendo_id&status=in.(pendente,em_atendimento)&order=updated_at.asc&limit=200`,
         { method: "GET" }
       );
       const all = Array.isArray(data) ? data : [];
@@ -105,12 +107,24 @@ export default function MedicalPage() {
         return false;
       });
 
-      // UX: manter "em atendimento" sempre no topo para não precisar rolar para finalizar/encaminhar.
+      // UX:
+      // - manter "em atendimento" sempre no topo
+      // - dentro de "pendente": prioridade primeiro, por ordem de chegada na fila prioritária
       const sorted = [...visible].sort((a, b) => {
         const aActive = a.status === "em_atendimento";
         const bActive = b.status === "em_atendimento";
         if (aActive !== bActive) return aActive ? -1 : 1;
-        return 0; // mantém a ordem do backend dentro do mesmo grupo
+
+        // ambos pendentes (ou ambos em_atendimento do próprio user)
+        const aPri = Boolean((a as any).prioridade);
+        const bPri = Boolean((b as any).prioridade);
+        if (aPri !== bPri) return aPri ? -1 : 1;
+
+        // ordem de chegada na fila prioritária: prioridade_at (ou updated_at como fallback)
+        const aT = Date.parse(String((a as any).prioridade_at || a.updated_at || a.created_at || ""));
+        const bT = Date.parse(String((b as any).prioridade_at || b.updated_at || b.created_at || ""));
+        if (!Number.isNaN(aT) && !Number.isNaN(bT) && aT !== bT) return aT - bT;
+        return 0;
       });
 
       setRows(sorted);

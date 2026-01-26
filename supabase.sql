@@ -66,6 +66,8 @@ create table if not exists public.senhas (
   senha text not null unique,
   nome text,
   cpf text,
+  prioridade boolean not null default false,
+  prioridade_at timestamptz,
   status text not null check (status in ('cadastro','pendente','em_atendimento','atendida','cancelada','nao_compareceu')),
   soc_status text not null default 'nao_verificado' check (soc_status in ('encontrado','nao_encontrado','nao_verificado')),
   encaminhamento jsonb,
@@ -87,6 +89,7 @@ create table if not exists public.senha_eventos (
 
 create index if not exists idx_senhas_status on public.senhas(status);
 create index if not exists idx_senhas_medico_atendendo on public.senhas(medico_atendendo_id);
+create index if not exists idx_senhas_prioridade on public.senhas (prioridade desc, prioridade_at asc nulls last, updated_at asc);
 create index if not exists idx_eventos_created_at on public.senha_eventos(created_at desc);
 create index if not exists idx_eventos_tipo on public.senha_eventos(tipo);
 
@@ -168,7 +171,8 @@ create or replace function public.triar_senha(
   p_senha text,
   p_nome text,
   p_cpf text,
-  p_soc_status text
+  p_soc_status text,
+  p_prioridade boolean default false
 )
 returns public.senhas
 language plpgsql
@@ -197,7 +201,9 @@ begin
      set nome = nullif(trim(p_nome),''),
          cpf = nullif(regexp_replace(coalesce(p_cpf,''), '\D', '', 'g'),''),
          soc_status = p_soc_status,
-         status = 'pendente'
+         status = 'pendente',
+         prioridade = coalesce(p_prioridade, false),
+         prioridade_at = case when coalesce(p_prioridade, false) then now() else null end
    where s.senha = trim(p_senha)
      and s.status in ('cadastro','pendente')
      and s.medico_atendendo_id is null
@@ -208,7 +214,7 @@ begin
   end if;
 
   insert into public.senha_eventos (senha_id, tipo, actor_profile_id, payload)
-  values (v_row.id, 'TRIAGEM_OK', v_profile_id, jsonb_build_object('senha', v_row.senha, 'soc_status', v_row.soc_status));
+  values (v_row.id, 'TRIAGEM_OK', v_profile_id, jsonb_build_object('senha', v_row.senha, 'soc_status', v_row.soc_status, 'prioridade', v_row.prioridade));
 
   return v_row;
 end;
