@@ -8,7 +8,9 @@ export function senhaCurta(raw: unknown): string {
   const digits = rest.replace(/\D/g, "");
   if (!digits) return s;
 
-  const first5 = digits.slice(0, 5);
-  return prefix ? `${prefix}${first5}` : first5;
+  // Importante: não usar os primeiros dígitos porque o formato atual começa com data (ex.: 26012...),
+  // o que fazia várias senhas aparecerem iguais no painel. Usamos os ÚLTIMOS 5 dígitos (parte variável).
+  const last5 = digits.length <= 5 ? digits : digits.slice(-5);
+  return prefix ? `${prefix}${last5}` : last5;
 }
 

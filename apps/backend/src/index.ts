@@ -161,8 +161,10 @@ function senhaCurta(raw: unknown) {
   const rest = hasPrefix ? s.slice(1) : s;
   const digits = rest.replace(/\D/g, "");
   if (!digits) return s;
-  const first5 = digits.slice(0, 5);
-  return prefix ? `${prefix}${first5}` : first5;
+  // Importante: não usar os primeiros dígitos porque o formato atual começa com data,
+  // o que fazia várias senhas exibidas ficarem iguais. Usamos os ÚLTIMOS 5 dígitos (parte variável).
+  const last5 = digits.length <= 5 ? digits : digits.slice(-5);
+  return prefix ? `${prefix}${last5}` : last5;
 }
 
 function validateByteStringHeader(name: string, value: string) {
