@@ -597,7 +597,6 @@ app.post("/api/checkin", async (req, res) => {
   try {
     const cpf = normalizeCpf((req as any).body?.cpf);
     if (!cpf) return sendError(res, 400, "cpf é obrigatório");
-    const prioridade = Boolean((req as any).body?.prioridade);
 
     const cpfDigits = cpf.replace(/\D/g, "");
     const hoje = isoDateInTimeZone(env.SOC_TIMEZONE);
@@ -639,10 +638,6 @@ app.post("/api/checkin", async (req, res) => {
       };
       // Só envia nome quando for auto-enfileirar (service role).
       if (canAutoEnqueue && nome) payload.nome = nome;
-      if (prioridade) {
-        payload.prioridade = true;
-        payload.prioridade_at = new Date().toISOString();
-      }
 
       const out = await insertSenhaServerSide(payload);
       if (out.ok) {
@@ -748,6 +743,24 @@ app.get("/api/atendente/senhas", async (req, res) => {
   } catch (e: any) {
     const msg = e?.name === "AbortError" ? "Timeout ao carregar senhas" : "Erro ao carregar senhas";
     return sendError(res, 502, msg, { detail: String(e?.message || e) });
+  }
+});
+
+// Marcar/desmarcar prioridade (atendente/admin)
+app.post("/api/atendente/prioridade", async (req, res) => {
+  try {
+    const authHeader = getBearer(req.headers.authorization);
+    if (!authHeader) return sendError(res, 401, "Authorization Bearer token é obrigatório");
+    const senha = normalizeSenha((req as any).body?.senha);
+    const prioridade = Boolean((req as any).body?.prioridade);
+    if (!senha) return sendError(res, 400, "Campo 'senha' é obrigatório");
+
+    const out = await callSupabaseRpc({ rpcName: "set_prioridade", rpcBody: { p_senha: senha, p_prioridade: prioridade }, authHeader });
+    if (!out.ok) return sendError(res, out.status, "Falha ao atualizar prioridade", { detail: out.text.slice(0, 500) });
+    emitQueueUpdate("priority_updated", senha);
+    return res.json(out.text ? JSON.parse(out.text) : null);
+  } catch (e: any) {
+    return sendError(res, 500, "Erro ao atualizar prioridade", { detail: String(e?.message || e) });
   }
 });
 

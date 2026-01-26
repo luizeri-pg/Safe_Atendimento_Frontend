@@ -50,6 +50,14 @@ export default function ReceptionPage() {
     }
   }
 
+  async function togglePrioridade(row: SenhaRow) {
+    const s = String(row?.senha || "").trim();
+    if (!s) return;
+    const next = !Boolean(row.prioridade);
+    await apiFetch("/atendente/prioridade", { method: "POST", body: JSON.stringify({ senha: s, prioridade: next }) });
+    await load();
+  }
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,6 +185,20 @@ export default function ReceptionPage() {
                     </div>
                   </div>
                   <div className="flex gap-3 items-center w-full md:w-auto justify-center">
+                    <button
+                      className={
+                        (r.prioridade
+                          ? "bg-red-600 hover:bg-red-700"
+                          : "bg-gray-200 hover:bg-gray-300") +
+                        " text-gray-900 border-none rounded-xl py-3 px-5 text-sm font-bold cursor-pointer transition-all duration-300 shadow whitespace-nowrap"
+                      }
+                      onClick={() => togglePrioridade(r)}
+                      title={r.prioridade ? "Remover prioridade" : "Marcar como prioritário"}
+                      type="button"
+                    >
+                      <i className="fas fa-exclamation-circle mr-2" />
+                      {r.prioridade ? "Prioritário" : "Priorizar"}
+                    </button>
                     <button
                       className="bg-gradient-to-br from-blue-500 to-blue-700 text-white border-none rounded-xl py-3 px-6 text-sm font-semibold cursor-pointer transition-all duration-300 shadow-lg shadow-blue-500/30 whitespace-nowrap hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
                       disabled={r.status !== "cadastro"}

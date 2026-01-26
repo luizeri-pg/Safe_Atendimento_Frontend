@@ -220,6 +220,50 @@ begin
 end;
 $$;
 
+-- 4.2.1) Marcar/desmarcar prioridade (atendente/admin)
+create or replace function public.set_prioridade(p_senha text, p_prioridade boolean)
+returns public.senhas
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_role text;
+  v_profile_id uuid;
+  v_row public.senhas;
+  v_flag boolean;
+begin
+  v_profile_id := auth.uid();
+  select public.current_role() into v_role;
+
+  if v_role is null then
+    raise exception 'profile_not_found' using errcode = '42501';
+  end if;
+  if v_role not in ('atendente','admin') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  v_flag := coalesce(p_prioridade, false);
+
+  update public.senhas s
+     set prioridade = v_flag,
+         prioridade_at = case when v_flag then coalesce(s.prioridade_at, now()) else null end
+   where s.senha = trim(p_senha)
+     and s.status in ('cadastro','pendente')
+     and s.medico_atendendo_id is null
+  returning * into v_row;
+
+  if not found then
+    raise exception 'not_found_or_locked' using errcode = 'P0002';
+  end if;
+
+  insert into public.senha_eventos (senha_id, tipo, actor_profile_id, payload)
+  values (v_row.id, 'TRIAGEM_OK', v_profile_id, jsonb_build_object('senha', v_row.senha, 'prioridade', v_row.prioridade, 'action', 'set_prioridade'));
+
+  return v_row;
+end;
+$$;
+
 -- 4.3) Chamar (médico) - ATÔMICO
 create or replace function public.chamar_senha(p_senha text)
 returns public.senhas

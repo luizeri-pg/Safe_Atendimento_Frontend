@@ -18,7 +18,6 @@ export default function TotemPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CheckinResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [prioridade, setPrioridade] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -33,7 +32,6 @@ export default function TotemPage() {
       setCpf("");
       setResult(null);
       setError(null);
-      setPrioridade(false);
     }, ms);
   }
 
@@ -50,7 +48,7 @@ export default function TotemPage() {
     try {
       const data = await apiFetch<CheckinResponse>("/checkin", {
         method: "POST",
-        body: JSON.stringify({ cpf: cpfTrim, prioridade })
+        body: JSON.stringify({ cpf: cpfTrim })
       });
       setResult(data);
       resetAfter(15000);
@@ -88,17 +86,6 @@ export default function TotemPage() {
             {loading ? "Buscando..." : "Buscar"}
           </button>
         </form>
-
-        <label className="mt-4 flex items-center gap-3 text-xl font-semibold text-gray-900 bg-white/60 rounded-xl px-5 py-3 select-none">
-          <input
-            type="checkbox"
-            className="w-6 h-6 accent-blue-600"
-            checked={prioridade}
-            onChange={(e) => setPrioridade(e.target.checked)}
-            disabled={loading}
-          />
-          Atendimento prioritário
-        </label>
 
         {error ? <div className="text-red-500 mt-5 text-2xl text-center bg-white/70 rounded-lg py-2 w-full">{error}</div> : null}
 
