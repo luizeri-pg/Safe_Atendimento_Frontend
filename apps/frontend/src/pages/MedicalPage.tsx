@@ -471,7 +471,7 @@ export default function MedicalPage() {
                       if (v === "enfermagem" && !salaExame) setSalaExame("Sala de exame 1");
                     }}
                   >
-                    <option value="medico">Outro médico</option>
+                    <option value="medico">Médico 2</option>
                     <option value="enfermagem">Enfermagem (Exames 1 e 2)</option>
                     <option value="fono">Fono (Exames 3)</option>
                   </select>
