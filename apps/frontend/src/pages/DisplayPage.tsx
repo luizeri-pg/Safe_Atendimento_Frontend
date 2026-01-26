@@ -75,64 +75,6 @@ export default function DisplayPage() {
     };
   }
 
-  function playClinicChime(ctx: AudioContext) {
-    const now = ctx.currentTime;
-    const note1Hz = 880; // "ding"
-    const note2Hz = 660; // "dong"
-    const note1Dur = 0.16;
-    const gap = 0.06;
-    const note2Dur = 0.20;
-
-    const out = withOutputChain(ctx);
-    // Suaviza o timbre para ficar mais “painel”.
-    const filter = ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.setValueAtTime(2400, now);
-    filter.Q.setValueAtTime(0.7, now);
-    filter.connect(out.destination);
-
-    const makeNote = (startAt: number, freq: number, dur: number) => {
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.connect(filter);
-
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, startAt);
-      osc.connect(gain);
-
-      // Attack rápido + decay suave
-      gain.gain.exponentialRampToValueAtTime(0.28, startAt + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-
-      osc.start(startAt);
-      osc.stop(startAt + dur + 0.02);
-
-      osc.onended = () => {
-        try {
-          osc.disconnect();
-          gain.disconnect();
-        } catch {
-          // ignore
-        }
-      };
-    };
-
-    makeNote(now, note1Hz, note1Dur);
-    makeNote(now + note1Dur + gap, note2Hz, note2Dur);
-
-    // Cleanup do filtro no final
-    const endAt = now + note1Dur + gap + note2Dur + 0.04;
-    setTimeout(() => {
-      try {
-        filter.disconnect();
-        out.cleanup();
-      } catch {
-        // ignore
-      }
-    }, Math.max(0, Math.ceil((endAt - ctx.currentTime) * 1000)));
-  }
-
   function playDoorbell(ctx: AudioContext) {
     const now = ctx.currentTime;
     const out = withOutputChain(ctx);
@@ -251,24 +193,6 @@ export default function DisplayPage() {
     }
   }
 
-  async function testSound() {
-    const ctx = getOrCreateAudioContext();
-    if (!ctx) return;
-    try {
-      if (ctx.state !== "running") await ctx.resume();
-      setSoundEnabled(true);
-      setSoundStatus(ctx.state === "running" ? "ready" : "blocked");
-      try {
-        localStorage.setItem("SAFE_DISPLAY_SOUND", "1");
-      } catch {
-        // ignore
-      }
-      if (ctx.state === "running") playNotification(ctx);
-    } catch {
-      setSoundStatus("blocked");
-    }
-  }
-
   const [pendentes, setPendentes] = useState<PainelRow[]>([]);
   const [emAtendimento, setEmAtendimento] = useState<PainelRow[]>([]);
   const [highlight, setHighlight] = useState<{
@@ -305,13 +229,17 @@ export default function DisplayPage() {
   }, [soundEnabled]);
 
   useEffect(() => {
-    const onQueue = () => load().catch(() => null);
+    const onQueue = () => {
+      // Som em toda atualização de fila/lista (triagem/finalizar/chamar/encaminhar/etc).
+      beepTwice();
+      load().catch(() => null);
+    };
     const onAnn = (payload: any) => {
       const senha = String(payload?.senha || "").trim();
       if (!senha) return;
-      // Som só para chamar/encaminhar (não tocar em finalizar/triagem/etc).
-      const reason = String(payload?.reason || "").trim().toLowerCase();
-      if (reason === "called" || reason === "referred") beepTwice();
+      // Como este evento também aciona atualização de tela (highlight + reload),
+      // tocamos a campainha aqui também. O debounce evita duplicar se vier junto com queue_update.
+      beepTwice();
       setHighlight({
         senha,
         nome: payload?.nome ?? null,
@@ -359,11 +287,13 @@ export default function DisplayPage() {
             <i className={soundEnabled ? "fas fa-volume-up mr-2" : "fas fa-volume-mute mr-2"} />
             {soundEnabled ? "Som: ON" : "Som: OFF"}
           </button>
-          <button className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition" onClick={testSound} title="Testar som">
-            <i className="fas fa-bell mr-2" />
-            Testar
-          </button>
-          <button className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition" onClick={() => load()}>
+          <button
+            className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-2 transition"
+            onClick={() => {
+              beepTwice();
+              load().catch(() => null);
+            }}
+          >
             <i className="fas fa-sync-alt mr-2" />
             Atualizar
           </button>
