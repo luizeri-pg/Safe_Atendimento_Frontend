@@ -597,6 +597,7 @@ app.post("/api/checkin", async (req, res) => {
   try {
     const cpf = normalizeCpf((req as any).body?.cpf);
     if (!cpf) return sendError(res, 400, "cpf é obrigatório");
+    const prioridade = Boolean((req as any).body?.prioridade);
 
     const cpfDigits = cpf.replace(/\D/g, "");
     const hoje = isoDateInTimeZone(env.SOC_TIMEZONE);
@@ -638,6 +639,10 @@ app.post("/api/checkin", async (req, res) => {
       };
       // Só envia nome quando for auto-enfileirar (service role).
       if (canAutoEnqueue && nome) payload.nome = nome;
+      if (prioridade) {
+        payload.prioridade = true;
+        payload.prioridade_at = new Date().toISOString();
+      }
 
       const out = await insertSenhaServerSide(payload);
       if (out.ok) {
