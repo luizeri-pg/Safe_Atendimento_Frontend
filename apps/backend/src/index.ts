@@ -353,7 +353,7 @@ function inferSalaForAnnouncement({
   const r = String(callerRole || "").trim().toLowerCase();
   if (r === "medico") return "Consultório";
   if (r === "enfermagem") return "Exames 1 e Exames 2";
-  if (r === "fono") return "Exames 3";
+  if (r === "fono") return "Audiometria";
   return null;
 }
 

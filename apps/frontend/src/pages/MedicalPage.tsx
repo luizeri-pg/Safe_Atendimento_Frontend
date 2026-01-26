@@ -34,7 +34,7 @@ export default function MedicalPage() {
   const localLabel = useMemo(() => {
     if (role === "medico") return "Consultório";
     if (role === "enfermagem") return "Exames 1 e Exames 2";
-    return "Exames 3";
+    return "Audiometria";
   }, [role]);
 
   const title = useMemo(() => `${role === "medico" ? "Painel de Atendimento" : "Painel de Exames"} (${socketStatus})`, [
@@ -69,7 +69,15 @@ export default function MedicalPage() {
   }
   function matchesExamRoom(enc: any) {
     const sala = normalizeRoom(enc?.salaDestino || "");
-    if (role === "fono") return sala.includes("exame 3") || sala.includes("exames 3") || sala.includes("sala de exame 3");
+    if (role === "fono") {
+      // Compatibilidade: aceita destinos antigos ("Exames 3"/"Sala de exame 3") e novo ("Audiometria").
+      return (
+        sala.includes("audiometria") ||
+        sala.includes("exame 3") ||
+        sala.includes("exames 3") ||
+        sala.includes("sala de exame 3")
+      );
+    }
     // enfermagem: exame 1 e 2
     return sala.includes("exame 1") || sala.includes("exame 2") || sala.includes("sala de exame 1") || sala.includes("sala de exame 2");
   }
@@ -173,17 +181,19 @@ export default function MedicalPage() {
     const enc = normalizeEncaminhamento(row?.encaminhamento);
     const salaDestino = enc?.salaDestino != null ? String(enc.salaDestino) : "";
     const salaNorm = normalizeRoom(salaDestino);
-    const inferredSala = salaNorm.includes("exame 3")
-      ? "Sala de exame 3"
+    const inferredSala = salaNorm.includes("audiometria")
+      ? "Audiometria"
+      : salaNorm.includes("exame 3")
+      ? "Audiometria"
       : salaNorm.includes("exame 2")
         ? "Sala de exame 2"
         : salaNorm.includes("exame 1")
           ? "Sala de exame 1"
           : "";
-    setSalaExame(role === "fono" ? "Sala de exame 3" : inferredSala);
+    setSalaExame(role === "fono" ? "Audiometria" : inferredSala);
     if (role === "enfermagem") {
-      // Exames 3 é sempre Fono
-      if (salaNorm.includes("exame 3")) setEncTipo("fono");
+      // Audiometria (ex-Exames 3) é sempre Fono
+      if (salaNorm.includes("audiometria") || salaNorm.includes("exame 3")) setEncTipo("fono");
       else if (salaNorm.includes("exame 1") || salaNorm.includes("exame 2")) setEncTipo("exame");
       else setEncTipo("medico");
       setEncFromSalaExame(inferredSala);
@@ -207,14 +217,14 @@ export default function MedicalPage() {
       if (role === "enfermagem" && (encTipo === "exame" || encTipo === "fono")) {
         // enfermagem:
         // - Exames (1/2) fica na enfermagem
-        // - Exames 3 é sempre Fono
+        // - Audiometria é sempre Fono
         const defaultSala =
           encFromSalaExame === "Sala de exame 1"
             ? "Sala de exame 2"
             : encFromSalaExame === "Sala de exame 2"
               ? "Sala de exame 1"
               : "Sala de exame 2";
-        const sala = encTipo === "fono" ? "Sala de exame 3" : salaExame || defaultSala;
+        const sala = encTipo === "fono" ? "Audiometria" : salaExame || defaultSala;
         if (encTipo !== "fono" && encFromSalaExame && sala === encFromSalaExame) return;
         await apiFetch("/atendimento/encaminhar", {
           method: "POST",
@@ -246,7 +256,7 @@ export default function MedicalPage() {
         body: JSON.stringify({ senha: encSenha, tipo: "exame", salaDestino: sala, motivo: encMotivo || null })
       });
     } else {
-      const sala = "Sala de exame 3";
+      const sala = "Audiometria";
       await apiFetch("/atendimento/encaminhar", {
         method: "POST",
         body: JSON.stringify({ senha: encSenha, tipo: "exame", salaDestino: sala, motivo: encMotivo || null })
@@ -467,13 +477,13 @@ export default function MedicalPage() {
                     onChange={(e) => {
                       const v = e.target.value as any;
                       setEncTipo(v);
-                      if (v === "fono") setSalaExame("Sala de exame 3");
+                      if (v === "fono") setSalaExame("Audiometria");
                       if (v === "enfermagem" && !salaExame) setSalaExame("Sala de exame 1");
                     }}
                   >
                     <option value="medico">Médico 2</option>
                     <option value="enfermagem">Enfermagem (Exames 1 e 2)</option>
-                    <option value="fono">Fono (Exames 3)</option>
+                    <option value="fono">Fono (Audiometria)</option>
                   </select>
                 </div>
               ) : role === "enfermagem" ? (
@@ -487,13 +497,13 @@ export default function MedicalPage() {
                     onChange={(e) => {
                       const v = e.target.value as any;
                       setEncTipo(v);
-                      if (v === "fono") setSalaExame("Sala de exame 3");
+                      if (v === "fono") setSalaExame("Audiometria");
                       if (v === "exame" && !salaExame) setSalaExame("Sala de exame 1");
                     }}
                   >
                     <option value="medico">Médico / Fono</option>
                     <option value="exame">Enfermagem (Exames 1 e 2)</option>
-                    <option value="fono">Fono (Exames 3)</option>
+                    <option value="fono">Fono (Audiometria)</option>
                   </select>
                   <div className="mt-2 text-xs text-gray-600">
                     Você está em <strong>{localLabel}</strong>.
@@ -537,7 +547,7 @@ export default function MedicalPage() {
                   {encTipo === "fono" ? (
                     <input
                       className="w-full py-3 px-4 border-2 border-gray-200 rounded-xl text-base bg-gray-100"
-                      value="Sala de exame 3"
+                      value="Audiometria"
                       readOnly
                     />
                   ) : role === "enfermagem" && encTipo === "exame" ? (
