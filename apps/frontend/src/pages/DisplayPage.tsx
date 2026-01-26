@@ -24,14 +24,19 @@ export default function DisplayPage() {
   const { socket, status: socketStatus, lastError } = useSocket({ publicDisplay: true });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     try {
-      return localStorage.getItem("SAFE_DISPLAY_SOUND") === "1";
+      const v = localStorage.getItem("SAFE_DISPLAY_SOUND");
+      // Padrão: ligado (para painel/TV). Se o usuário desligar, gravamos "0".
+      if (v === "0") return false;
+      if (v === "1") return true;
+      return true;
     } catch {
-      return false;
+      return true;
     }
   });
   const [soundStatus, setSoundStatus] = useState<"off" | "ready" | "blocked">("off");
   const audioCtxRef = useRef<AudioContext | null>(null);
   const lastBeepAtRef = useRef<number>(0);
+  const didAutoEnableRef = useRef<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -187,7 +192,7 @@ export default function DisplayPage() {
     setSoundEnabled(false);
     setSoundStatus("off");
     try {
-      localStorage.removeItem("SAFE_DISPLAY_SOUND");
+      localStorage.setItem("SAFE_DISPLAY_SOUND", "0");
     } catch {
       // ignore
     }
@@ -215,6 +220,17 @@ export default function DisplayPage() {
 
   useEffect(() => {
     load().catch(() => null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Tenta habilitar automaticamente ao abrir.
+  useEffect(() => {
+    if (!soundEnabled) return;
+    if (didAutoEnableRef.current) return;
+    didAutoEnableRef.current = true;
+    // Se o navegador permitir autoplay, isso já deixa pronto.
+    // Se não permitir, o painel vai mostrar o aviso (blocked) para o usuário clicar 1x.
+    enableSound().catch(() => null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
